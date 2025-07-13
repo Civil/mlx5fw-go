@@ -7,6 +7,8 @@
 *.dll
 *.so
 *.dylib
+mlx5fw-go
+cmd/mlx5fw-go/mlx5fw-go
 
 # Test binary, built with `go test -c`
 *.test

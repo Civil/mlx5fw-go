@@ -1,0 +1,170 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+var (
+	// Logger for the application
+	logger *zap.Logger
+
+	// Command line flags
+	verboseLogging bool
+	firmwarePath   string
+)
+
+func main() {
+	// Initialize zap logger with error level by default (quiet mode)
+	config := zap.NewProductionConfig()
+	config.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
+	config.OutputPaths = []string{"stderr"}
+	// Disable stacktrace for normal errors (only show for panic level)
+	config.DisableStacktrace = true
+
+	var err error
+	logger, err = config.Build()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	rootCmd := &cobra.Command{
+		Use:   "mlx5fw-go",
+		Short: "Mellanox firmware parsing tool",
+		Long: `A CLI tool for parsing and analyzing Mellanox firmware files (FS4 and FS5 formats)
+
+This tool provides functionality to analyze Mellanox firmware files including:
+- Listing firmware sections
+- Displaying section contents in human-readable format
+- Parsing ITOC (Image Table of Contents) and DTOC (Device Table of Contents)
+
+Example usage:
+  mlx5fw-go sections -f firmware.bin                # List all sections
+  mlx5fw-go sections -f firmware.bin -c             # Show section contents
+  mlx5fw-go sections -f firmware.bin -v             # Enable verbose logging`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	// Add global flags
+	rootCmd.PersistentFlags().BoolVarP(&verboseLogging, "verbose", "v", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().StringVarP(&firmwarePath, "file", "f", "", "Firmware file path (required)")
+	rootCmd.MarkPersistentFlagRequired("file")
+
+	// Add sections command
+	sectionsCmd := &cobra.Command{
+		Use:   "sections",
+		Short: "Print firmware sections",
+		Long:  "Display all sections found in the firmware file in human-readable format",
+	}
+	
+	// Add flags
+	var showContent bool
+	var jsonOutput bool
+	sectionsCmd.Flags().BoolVarP(&showContent, "content", "c", false, "Show section content")
+	sectionsCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
+	
+	// Store the flag value for use in command
+	sectionsCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		outputFormat := ""
+		if jsonOutput {
+			outputFormat = "json"
+		}
+		return runSectionsCommand(cmd, args, showContent, outputFormat)
+	}
+
+	rootCmd.AddCommand(sectionsCmd)
+
+	// Add query command
+	queryCmd := &cobra.Command{
+		Use:   "query",
+		Short: "Query firmware metadata",
+		Long:  "Display firmware metadata information similar to mstflint query output",
+	}
+	
+	// Add flags
+	var fullOutput bool
+	var jsonOutputQuery bool
+	queryCmd.Flags().BoolVar(&fullOutput, "full", false, "Show full query output")
+	queryCmd.Flags().BoolVar(&jsonOutputQuery, "json", false, "Output in JSON format")
+	
+	// Store the flag value for use in command
+	queryCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return runQueryCommand(cmd, args, fullOutput, jsonOutputQuery)
+	}
+
+	rootCmd.AddCommand(queryCmd)
+
+	// Add print-config command
+	printConfigCmd := &cobra.Command{
+		Use:   "print-config",
+		Short: "Print firmware configuration (INI)",
+		Long:  "Display the DBG_FW_INI section from the firmware file (equivalent to mstflint dc command)",
+		RunE:  runPrintConfigCommand,
+	}
+	rootCmd.AddCommand(printConfigCmd)
+
+	// Add extract command
+	extractCmd := &cobra.Command{
+		Use:   "extract",
+		Short: "Extract firmware sections to files",
+		Long:  "Extract all firmware sections as separate files to the specified output directory (skipping CRC if present at the end of sections)",
+	}
+	
+	// Add output directory flag
+	var extractOutputDir string
+	extractCmd.Flags().StringVarP(&extractOutputDir, "output", "o", ".", "Output directory for extracted sections")
+	
+	extractCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return runExtractCommand(cmd, args, extractOutputDir)
+	}
+	
+	rootCmd.AddCommand(extractCmd)
+
+	// Add replace-section command
+	replaceSectionCmd := &cobra.Command{
+		Use:   "replace-section SECTION_NAME[:ID] -r REPLACEMENT_FILE -o OUTPUT_FILE",
+		Short: "Replace a section with content from a file",
+		Long: `Replace a firmware section with content from a file and recalculate checksums.
+
+This command allows you to replace any section in the firmware with new content.
+If the section size changes, the firmware structure will be adjusted accordingly.
+
+Examples:
+  mlx5fw-go replace-section -f firmware.bin DBG_FW_INI -r new_ini.txt -o modified.bin
+  mlx5fw-go replace-section -f firmware.bin ITOC:0 -r new_itoc.bin -o modified.bin`,
+		Args: cobra.ExactArgs(1),
+	}
+	
+	// Add flags
+	var replacementFile string
+	var outputFile string
+	replaceSectionCmd.Flags().StringVarP(&replacementFile, "replacement", "r", "", "File containing replacement data (required)")
+	replaceSectionCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output firmware file (required)")
+	replaceSectionCmd.MarkFlagRequired("replacement")
+	replaceSectionCmd.MarkFlagRequired("output")
+	
+	replaceSectionCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		sectionName, sectionID, err := parseReplaceSectionArgs(args)
+		if err != nil {
+			return err
+		}
+		return runReplaceSectionCommandV4(cmd, args, sectionName, sectionID, replacementFile, outputFile)
+	}
+	
+	rootCmd.AddCommand(replaceSectionCmd)
+
+	// Execute command
+	if err := rootCmd.Execute(); err != nil {
+		logger.Error("Command execution failed", zap.Error(err))
+		os.Exit(1)
+	}
+}
+
+
