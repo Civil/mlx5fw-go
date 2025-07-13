@@ -5,50 +5,25 @@ import (
 	"compress/zlib"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
-	"github.com/Civil/mlx5fw-go/pkg/parser"
-	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
 
 func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
-	// Set verbose logging if requested
-	if verboseLogging {
-		config := zap.NewDevelopmentConfig()
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-		var err error
-		logger, err = config.Build()
-		if err != nil {
-			return fmt.Errorf("failed to initialize verbose logger: %w", err)
-		}
-	}
+	logger.Info("Starting print-config command")
 
-	logger.Info("Starting print-config command", zap.String("firmware", firmwarePath))
-
-	// Check if file exists
-	if _, err := os.Stat(firmwarePath); err != nil {
-		return fmt.Errorf("cannot access firmware file: %w", err)
-	}
-
-	// Open firmware file
-	reader, err := parser.NewFirmwareReader(firmwarePath, logger)
+	// Initialize firmware parser
+	ctx, err := InitializeFirmwareParser(firmwarePath, logger)
 	if err != nil {
-		return fmt.Errorf("failed to open firmware: %w", err)
+		return err
 	}
-	defer reader.Close()
+	defer ctx.Close()
 
-	// Create FS4 parser (for now, we only support FS4)
-	fs4Parser := fs4.NewParser(reader, logger)
-	
-	// Parse firmware
-	if err := fs4Parser.Parse(); err != nil {
-		return fmt.Errorf("failed to parse firmware: %w", err)
-	}
+	fs4Parser := ctx.Parser
 
 	// Check if firmware is encrypted
 	if fs4Parser.IsEncrypted() {
@@ -73,7 +48,7 @@ func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
 		zap.Uint32("size", dbgIniSection.Size))
 
 	// Read section data
-	sectionData, err := reader.ReadSection(int64(dbgIniSection.Offset), dbgIniSection.Size)
+	sectionData, err := ctx.Reader.ReadSection(int64(dbgIniSection.Offset), dbgIniSection.Size)
 	if err != nil {
 		return fmt.Errorf("failed to read DBG_FW_INI section: %w", err)
 	}

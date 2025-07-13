@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
-	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
@@ -29,38 +28,16 @@ type SectionDisplay struct {
 }
 
 func runSectionsCommand(cmd *cobra.Command, args []string, showContent bool, outputFormat string) error {
-	// Set verbose logging if requested
-	if verboseLogging {
-		config := zap.NewDevelopmentConfig()
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-		var err error
-		logger, err = config.Build()
-		if err != nil {
-			return fmt.Errorf("failed to initialize verbose logger: %w", err)
-		}
-	}
+	logger.Info("Starting sections command")
 
-	logger.Info("Starting sections command", zap.String("firmware", firmwarePath))
-
-	// Check if file exists
-	if _, err := os.Stat(firmwarePath); err != nil {
-		return fmt.Errorf("cannot access firmware file: %w", err)
-	}
-
-	// Open firmware file
-	reader, err := parser.NewFirmwareReader(firmwarePath, logger)
+	// Initialize firmware parser
+	ctx, err := InitializeFirmwareParser(firmwarePath, logger)
 	if err != nil {
-		return fmt.Errorf("failed to open firmware: %w", err)
+		return err
 	}
-	defer reader.Close()
+	defer ctx.Close()
 
-	// Create FS4 parser (for now, we only support FS4)
-	fs4Parser := fs4.NewParser(reader, logger)
-	
-	// Parse firmware
-	if err := fs4Parser.Parse(); err != nil {
-		return fmt.Errorf("failed to parse firmware: %w", err)
-	}
+	fs4Parser := ctx.Parser
 
 	// Get sections
 	sections := fs4Parser.GetSections()
@@ -101,15 +78,7 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 		for _, sectionList := range sections {
 			for _, section := range sectionList {
 				// Get section type name
-				var typeName string
-				if section.IsDeviceData {
-					// DTOC section - extract raw type from the OR'd type
-					rawType := uint8(section.Type & 0xFF)
-					typeName = types.GetDTOCSectionTypeName(rawType)
-				} else {
-					// ITOC section
-					typeName = types.GetSectionTypeName(section.Type)
-				}
+				typeName := GetSectionTypeName(section)
 				
 				// Convert CRC type to string
 				var crcTypeName string
@@ -251,15 +220,7 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 				status = "ERROR"
 			}
 			
-			var name string
-			if section.IsDeviceData {
-				// DTOC section - extract raw type from the OR'd type
-				rawType := uint8(section.Type & 0xFF)
-				name = types.GetDTOCSectionTypeName(rawType)
-			} else {
-				// ITOC section
-				name = types.GetSectionTypeName(section.Type)
-			}
+			name := GetSectionTypeName(section)
 			
 			displaySections = append(displaySections, SectionDisplay{
 				StartAddr: section.Offset,
@@ -308,10 +269,3 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 	return nil
 }
 
-// Helper function to get section type name
-func getSectionTypeName(section *interfaces.Section) string {
-	if section.IsDeviceData {
-		return types.GetDTOCSectionTypeName(uint8(section.Type & 0xFF))
-	}
-	return types.GetSectionTypeName(section.Type)
-}

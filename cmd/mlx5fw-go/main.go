@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 var (
@@ -16,18 +15,22 @@ var (
 	// Command line flags
 	verboseLogging bool
 	firmwarePath   string
+	jsonOutput     bool
 )
 
 func main() {
-	// Initialize zap logger with error level by default (quiet mode)
-	config := zap.NewProductionConfig()
-	config.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
-	config.OutputPaths = []string{"stderr"}
-	// Disable stacktrace for normal errors (only show for panic level)
-	config.DisableStacktrace = true
+	// Parse command line args early to check for JSON flag
+	// We need to do this before logger initialization
+	for _, arg := range os.Args[1:] {
+		if arg == "--json" {
+			jsonOutput = true
+			break
+		}
+	}
 
+	// Initialize zap logger
 	var err error
-	logger, err = config.Build()
+	logger, err = ConfigureLogger(jsonOutput, false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
@@ -55,7 +58,26 @@ Example usage:
 	// Add global flags
 	rootCmd.PersistentFlags().BoolVarP(&verboseLogging, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().StringVarP(&firmwarePath, "file", "f", "", "Firmware file path (required)")
-	rootCmd.MarkPersistentFlagRequired("file")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
+
+	// Setup verbose logging after flags are parsed
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// If verbose logging is requested, reconfigure the logger
+		if verboseLogging {
+			logger, err = ConfigureLogger(jsonOutput, true)
+			if err != nil {
+				return fmt.Errorf("failed to initialize verbose logger: %w", err)
+			}
+		}
+		
+		// Add firmware filename to logger context if provided
+		if firmwarePath != "" {
+			logger = logger.With(zap.String("firmware", firmwarePath))
+		}
+		
+		return nil
+	}
+
 
 	// Add sections command
 	sectionsCmd := &cobra.Command{
@@ -66,12 +88,13 @@ Example usage:
 	
 	// Add flags
 	var showContent bool
-	var jsonOutput bool
 	sectionsCmd.Flags().BoolVarP(&showContent, "content", "c", false, "Show section content")
-	sectionsCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	
 	// Store the flag value for use in command
 	sectionsCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if err := ValidateFirmwarePath(firmwarePath); err != nil {
+			return err
+		}
 		outputFormat := ""
 		if jsonOutput {
 			outputFormat = "json"
@@ -90,13 +113,14 @@ Example usage:
 	
 	// Add flags
 	var fullOutput bool
-	var jsonOutputQuery bool
 	queryCmd.Flags().BoolVar(&fullOutput, "full", false, "Show full query output")
-	queryCmd.Flags().BoolVar(&jsonOutputQuery, "json", false, "Output in JSON format")
 	
 	// Store the flag value for use in command
 	queryCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return runQueryCommand(cmd, args, fullOutput, jsonOutputQuery)
+		if err := ValidateFirmwarePath(firmwarePath); err != nil {
+			return err
+		}
+		return runQueryCommand(cmd, args, fullOutput, jsonOutput)
 	}
 
 	rootCmd.AddCommand(queryCmd)
@@ -106,7 +130,12 @@ Example usage:
 		Use:   "print-config",
 		Short: "Print firmware configuration (INI)",
 		Long:  "Display the DBG_FW_INI section from the firmware file (equivalent to mstflint dc command)",
-		RunE:  runPrintConfigCommand,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := ValidateFirmwarePath(firmwarePath); err != nil {
+				return err
+			}
+			return runPrintConfigCommand(cmd, args)
+		},
 	}
 	rootCmd.AddCommand(printConfigCmd)
 
@@ -122,6 +151,9 @@ Example usage:
 	extractCmd.Flags().StringVarP(&extractOutputDir, "output", "o", ".", "Output directory for extracted sections")
 	
 	extractCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if err := ValidateFirmwarePath(firmwarePath); err != nil {
+			return err
+		}
 		return runExtractCommand(cmd, args, extractOutputDir)
 	}
 	
@@ -151,6 +183,9 @@ Examples:
 	replaceSectionCmd.MarkFlagRequired("output")
 	
 	replaceSectionCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if err := ValidateFirmwarePath(firmwarePath); err != nil {
+			return err
+		}
 		sectionName, sectionID, err := parseReplaceSectionArgs(args)
 		if err != nil {
 			return err

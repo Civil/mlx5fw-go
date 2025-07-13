@@ -1,11 +1,11 @@
-# mlx5fw CLI Tool
+# mlx5fw-go-go CLI Tool
 
-The `mlx5fw` command-line tool provides functionality to parse and analyze Mellanox firmware files (FS4 and FS5 formats).
+The `mlx5fw-go-go` command-line tool provides functionality to parse and analyze Mellanox firmware files (FS4 and FS5 formats).
 
 ## Building
 
 ```bash
-go build ./cmd/mlx5fw
+go build ./cmd/mlx5fw-go-go
 ```
 
 ## Commands
@@ -18,13 +18,13 @@ The `sections` command displays all sections found in a firmware file.
 
 ```bash
 # List all sections
-mlx5fw sections -f <firmware.bin>
+mlx5fw-go-go sections -f <firmware.bin>
 
 # Show section contents in human-readable format
-mlx5fw sections -f <firmware.bin> -c
+mlx5fw-go-go sections -f <firmware.bin> -c
 
 # Enable verbose logging
-mlx5fw sections -f <firmware.bin> -v
+mlx5fw-go-go sections -f <firmware.bin> -v
 ```
 
 #### Options

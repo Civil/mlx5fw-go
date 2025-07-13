@@ -2,49 +2,30 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
-	"github.com/Civil/mlx5fw-go/pkg/parser"
-	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 )
 
 func runQueryCommand(cmd *cobra.Command, args []string, fullOutput bool, jsonOutput bool) error {
-	// Set verbose logging if requested
-	if verboseLogging {
-		config := zap.NewDevelopmentConfig()
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-		var err error
-		logger, err = config.Build()
-		if err != nil {
-			return fmt.Errorf("failed to initialize verbose logger: %w", err)
-		}
-	}
+	logger.Info("Starting query command")
 
-	logger.Info("Starting query command", zap.String("firmware", firmwarePath))
-
-	// Check if file exists
-	if _, err := os.Stat(firmwarePath); err != nil {
-		return fmt.Errorf("cannot access firmware file: %w", err)
-	}
-
-	// Open firmware file
-	reader, err := parser.NewFirmwareReader(firmwarePath, logger)
+	// Initialize firmware parser
+	ctx, err := InitializeFirmwareParser(firmwarePath, logger)
 	if err != nil {
-		return fmt.Errorf("failed to open firmware: %w", err)
+		return err
 	}
-	defer reader.Close()
+	defer ctx.Close()
 
-	// Create FS4 parser (for now, we only support FS4)
-	fs4Parser := fs4.NewParser(reader, logger)
-	
-	// Parse firmware
-	if err := fs4Parser.Parse(); err != nil {
-		return fmt.Errorf("failed to parse firmware: %w", err)
+	fs4Parser := ctx.Parser
+
+	// Check ITOC validity
+	hasInvalidITOC := false
+	if !fs4Parser.IsITOCValid() {
+		logger.Warn("ITOC header CRC verification failed - firmware may be corrupted")
+		hasInvalidITOC = true
 	}
 
 	// Query firmware information
@@ -54,7 +35,16 @@ func runQueryCommand(cmd *cobra.Command, args []string, fullOutput bool, jsonOut
 	}
 
 	// Display query output
-	return displayQueryInfo(info, fullOutput, jsonOutput)
+	if err := displayQueryInfo(info, fullOutput, jsonOutput); err != nil {
+		return err
+	}
+
+	// Return error if ITOC was invalid
+	if hasInvalidITOC {
+		return fmt.Errorf("ITOC header is invalid")
+	}
+
+	return nil
 }
 
 func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput bool) error {
@@ -102,10 +92,10 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 	} else {
 		fmt.Printf("Base MAC:              N/A                     %d\n", info.BaseMACNum)
 	}
-	fmt.Printf("Image VSD:             %s\n", formatNA(info.ImageVSD))
-	fmt.Printf("Device VSD:            %s\n", formatNA(info.DeviceVSD))
+	fmt.Printf("Image VSD:             %s\n", FormatNA(info.ImageVSD))
+	fmt.Printf("Device VSD:            %s\n", FormatNA(info.DeviceVSD))
 	fmt.Printf("PSID:                  %s\n", info.PSID)
-	fmt.Printf("Security Attributes:   %s\n", formatNA(info.SecurityAttrs))
+	fmt.Printf("Security Attributes:   %s\n", FormatNA(info.SecurityAttrs))
 	fmt.Printf("Security Ver:          %d\n", info.SecurityVer)
 	
 	fmt.Printf("Default Update Method: fw_ctrl\n")
@@ -113,9 +103,3 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 	return nil
 }
 
-func formatNA(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
-}

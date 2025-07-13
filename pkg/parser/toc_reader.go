@@ -57,9 +57,9 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32, maxEntries int) 
 		copy(entry.Data[:], data[entryOffset:entryOffset+32])
 		entry.ParseFields()
 
-		// Skip invalid entries
+		// Stop at end marker (type 0xFF)
 		if entry.GetType() == 0xFF {
-			continue
+			break
 		}
 
 		// Skip empty entries (all zeros except potentially the type field)
@@ -67,13 +67,8 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32, maxEntries int) 
 			continue
 		}
 
-		// Check for invalid flash addresses
-		if entry.FlashAddr > 0x10000000 { // 256MB limit
-			r.logger.Warn("Skipping entry with invalid flash address",
-				zap.Int("index", i),
-				zap.Uint32("flash_addr", entry.FlashAddr))
-			continue
-		}
+		// Don't filter out entries based on flash address
+		// mstflint processes all entries regardless of address value
 
 		entries = append(entries, entry)
 	}

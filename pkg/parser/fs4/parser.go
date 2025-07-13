@@ -892,3 +892,13 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 func (p *Parser) IsEncrypted() bool {
 	return p.isEncrypted
 }
+
+// IsITOCValid returns true if the ITOC header CRC is valid
+func (p *Parser) IsITOCValid() bool {
+	return p.itocHeaderValid
+}
+
+// IsDTOCValid returns true if the DTOC header CRC is valid
+func (p *Parser) IsDTOCValid() bool {
+	return p.dtocHeaderValid
+}

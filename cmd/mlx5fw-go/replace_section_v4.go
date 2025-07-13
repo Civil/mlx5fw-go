@@ -38,16 +38,6 @@ func parseReplaceSectionArgs(args []string) (string, int, error) {
 }
 
 func runReplaceSectionCommandV4(cmd *cobra.Command, args []string, sectionName string, sectionID int, replacementFile string, outputFile string) error {
-	if verboseLogging {
-		config := zap.NewDevelopmentConfig()
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-		var err error
-		logger, err = config.Build()
-		if err != nil {
-			return merry.Wrap(err)
-		}
-	}
-
 	logger.Debug("Starting replace-section command",
 		zap.String("firmware", firmwarePath),
 		zap.String("section", sectionName),

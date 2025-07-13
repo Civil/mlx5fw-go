@@ -10,51 +10,27 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
-	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
 
 func runExtractCommand(cmd *cobra.Command, args []string, outputDir string) error {
-	// Set verbose logging if requested
-	if verboseLogging {
-		config := zap.NewDevelopmentConfig()
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-		var err error
-		logger, err = config.Build()
-		if err != nil {
-			return fmt.Errorf("failed to initialize verbose logger: %w", err)
-		}
-	}
-
 	logger.Info("Starting extract command", 
-		zap.String("firmware", firmwarePath),
 		zap.String("outputDir", outputDir))
-
-	// Check if file exists
-	if _, err := os.Stat(firmwarePath); err != nil {
-		return fmt.Errorf("cannot access firmware file: %w", err)
-	}
 
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Open firmware file
-	reader, err := parser.NewFirmwareReader(firmwarePath, logger)
+	// Initialize firmware parser
+	ctx, err := InitializeFirmwareParser(firmwarePath, logger)
 	if err != nil {
-		return fmt.Errorf("failed to open firmware: %w", err)
+		return err
 	}
-	defer reader.Close()
+	defer ctx.Close()
 
-	// Create FS4 parser (for now, we only support FS4)
-	fs4Parser := fs4.NewParser(reader, logger)
-	
-	// Parse firmware
-	if err := fs4Parser.Parse(); err != nil {
-		return fmt.Errorf("failed to parse firmware: %w", err)
-	}
+	fs4Parser := ctx.Parser
 
 	// Get sections
 	sections := fs4Parser.GetSections()
@@ -69,15 +45,7 @@ func extractSections(sections map[uint16][]*interfaces.Section, parser *fs4.Pars
 	for _, sectionList := range sections {
 		for _, section := range sectionList {
 			// Get section type name
-			var typeName string
-			if section.IsDeviceData {
-				// DTOC section - extract raw type from the OR'd type
-				rawType := uint8(section.Type & 0xFF)
-				typeName = types.GetDTOCSectionTypeName(rawType)
-			} else {
-				// ITOC section
-				typeName = types.GetSectionTypeName(section.Type)
-			}
+			typeName := GetSectionTypeName(section)
 			
 			// Clean up the type name for filename
 			fileName := strings.ReplaceAll(typeName, " ", "_")

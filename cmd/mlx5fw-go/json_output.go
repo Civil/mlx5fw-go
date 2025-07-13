@@ -71,10 +71,10 @@ func convertToQueryJSON(info *interfaces.FirmwareInfo) *QueryJSONOutput {
 		PartNumber:      info.PartNumber,
 		Description:     info.Description,
 		ProductVersion:  info.ProductVersion,
-		ImageVSD:        formatJSONNA(info.ImageVSD),
-		DeviceVSD:       formatJSONNA(info.DeviceVSD),
+		ImageVSD:        FormatNA(info.ImageVSD),
+		DeviceVSD:       FormatNA(info.DeviceVSD),
 		PSID:            info.PSID,
-		SecurityAttrs:   formatJSONNA(info.SecurityAttrs),
+		SecurityAttrs:   FormatNA(info.SecurityAttrs),
 		SecurityVer:     info.SecurityVer,
 		DefaultUpdateMethod: "fw_ctrl",
 	}
@@ -131,13 +131,6 @@ func getCRCTypeName(crcType types.CRCType) string {
 	}
 }
 
-// formatJSONNA formats empty strings as "N/A" for JSON output
-func formatJSONNA(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
-}
 
 // outputJSON outputs data as JSON
 func outputJSON(data interface{}) error {
