@@ -143,12 +143,15 @@ Example usage:
 	extractCmd := &cobra.Command{
 		Use:   "extract",
 		Short: "Extract firmware sections to files",
-		Long:  "Extract all firmware sections as separate files to the specified output directory (skipping CRC if present at the end of sections)",
+		Long:  "Extract all firmware sections as separate files to the specified output directory (CRC is always removed and metadata is always included)",
 	}
 	
 	// Add output directory flag
 	var extractOutputDir string
 	extractCmd.Flags().StringVarP(&extractOutputDir, "output", "o", ".", "Output directory for extracted sections")
+	
+	// Add JSON export flag (optional)
+	extractCmd.Flags().Bool("json", false, "Export parsed data as JSON for known section types")
 	
 	extractCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := ValidateFirmwarePath(firmwarePath); err != nil {
@@ -194,6 +197,42 @@ Examples:
 	}
 	
 	rootCmd.AddCommand(replaceSectionCmd)
+
+	// Add reassemble command
+	reassembleCmd := &cobra.Command{
+		Use:   "reassemble",
+		Short: "Reassemble firmware from extracted sections",
+		Long: `Reassemble a firmware image from previously extracted sections and metadata.
+
+This command reconstructs a complete firmware image from the extracted sections,
+gaps, and metadata created by the extract command. It handles CRC reconstruction
+and proper section placement according to the original firmware layout.
+
+Examples:
+  mlx5fw-go reassemble -i extracted_fw -o reassembled.bin
+  mlx5fw-go reassemble -i extracted_fw -o reassembled.bin --verify-crc`,
+	}
+	
+	// Add flags
+	var reassembleInputDir string
+	var reassembleOutputFile string
+	var reassembleVerifyCRC bool
+	reassembleCmd.Flags().StringVarP(&reassembleInputDir, "input", "i", "", "Input directory containing extracted sections (required)")
+	reassembleCmd.Flags().StringVarP(&reassembleOutputFile, "output", "o", "", "Output firmware file (required)")
+	reassembleCmd.Flags().BoolVar(&reassembleVerifyCRC, "verify-crc", false, "Verify CRC values during reassembly")
+	reassembleCmd.MarkFlagRequired("input")
+	reassembleCmd.MarkFlagRequired("output")
+	
+	reassembleCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		opts := ReassembleOptions{
+			InputDir:   reassembleInputDir,
+			OutputFile: reassembleOutputFile,
+			VerifyCRC:  reassembleVerifyCRC,
+		}
+		return runReassembleCommand(cmd, args, opts)
+	}
+	
+	rootCmd.AddCommand(reassembleCmd)
 
 	// Execute command
 	if err := rootCmd.Execute(); err != nil {

@@ -11,11 +11,20 @@ import (
 // TOCReader provides generic TOC reading functionality
 type TOCReader struct {
 	logger *zap.Logger
+	sectionFactory interfaces.SectionFactory
 }
 
 // NewTOCReader creates a new TOC reader
 func NewTOCReader(logger *zap.Logger) *TOCReader {
 	return &TOCReader{logger: logger}
+}
+
+// NewTOCReaderWithFactory creates a new TOC reader with a section factory
+func NewTOCReaderWithFactory(logger *zap.Logger, factory interfaces.SectionFactory) *TOCReader {
+	return &TOCReader{
+		logger: logger,
+		sectionFactory: factory,
+	}
 }
 
 // ReadTOCHeader reads and validates a TOC header
@@ -42,12 +51,12 @@ func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*ty
 	return header, nil
 }
 
-// ReadTOCEntries reads all TOC entries
-func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32, maxEntries int) ([]*types.ITOCEntry, error) {
+// ReadTOCEntries reads all TOC entries until end marker
+func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEntry, error) {
 	var entries []*types.ITOCEntry
 	entriesOffset := tocAddr + 32 // After header
 
-	for i := 0; i < maxEntries; i++ {
+	for i := 0; ; i++ {
 		entryOffset := entriesOffset + uint32(i)*32
 		if entryOffset+32 > uint32(len(data)) {
 			break
@@ -95,7 +104,7 @@ func (r *TOCReader) ReadTOCSections(data []byte, tocAddr uint32, isDTOC bool) ([
 		zap.Uint32("signature", header.Signature0))
 
 	// Read entries
-	entries, err := r.ReadTOCEntries(data, tocAddr, 256)
+	entries, err := r.ReadTOCEntries(data, tocAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +133,68 @@ func (r *TOCReader) ReadTOCSections(data []byte, tocAddr uint32, isDTOC bool) ([
 			zap.Uint16("type", sectionType),
 			zap.Uint64("offset", section.Offset),
 			zap.Uint32("size", section.Size))
+
+		sections = append(sections, section)
+	}
+
+	return sections, nil
+}
+
+// ReadTOCSectionsNew reads TOC sections and returns section interfaces
+func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool) ([]interfaces.SectionInterface, error) {
+	if r.sectionFactory == nil {
+		return nil, merry.New("section factory not set")
+	}
+
+	tocType := "ITOC"
+	if isDTOC {
+		tocType = "DTOC"
+	}
+
+	r.logger.Debug("Reading TOC sections",
+		zap.String("type", tocType),
+		zap.Uint32("address", tocAddr))
+
+	// Read entries
+	entries, err := r.ReadTOCEntries(data, tocAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert entries to sections using factory
+	var sections []interfaces.SectionInterface
+	for _, entry := range entries {
+		sectionType := entry.GetType()
+		if isDTOC {
+			// DTOC sections use different type mapping
+			sectionType = entry.GetType() | 0xE000
+		}
+
+		section, err := r.sectionFactory.CreateSection(
+			uint16(sectionType),
+			uint64(entry.FlashAddr),
+			entry.Size,
+			r.GetCRCType(entry),
+			uint32(entry.GetCRC()),
+			false, // isEncrypted - will be determined later
+			isDTOC,
+			entry,
+			false, // isFromHWPointer
+		)
+		if err != nil {
+			r.logger.Warn("Failed to create section",
+				zap.String("toc", tocType),
+				zap.Uint16("type", uint16(sectionType)),
+				zap.Error(err))
+			continue
+		}
+
+		r.logger.Debug("Found section",
+			zap.String("toc", tocType),
+			zap.String("name", r.getSectionName(entry.GetType(), isDTOC)),
+			zap.Uint16("type", uint16(sectionType)),
+			zap.Uint64("offset", section.Offset()),
+			zap.Uint32("size", section.Size()))
 
 		sections = append(sections, section)
 	}

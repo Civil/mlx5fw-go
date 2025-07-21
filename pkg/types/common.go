@@ -3,6 +3,7 @@ package types
 const (
 	// Magic patterns
 	MagicPattern = 0x4D544657ABCDEF00 // "MTFW\xAB\xCD\xEF\x00" in big endian
+	MagicPatternOffset = 0x08          // Standard offset for magic pattern in FS4
 	ITOCSignature = 0x49544F43         // "ITOC"
 	DTOCSignature = 0x44544F43         // "DTOC"
 	

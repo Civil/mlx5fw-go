@@ -10,10 +10,8 @@ mstflint="mstflint"
 verbose=1
 
 function find_firmwares() {
-	echo "sample_firmwares/broken_fw.bin"
-	return
 	declare -A files_list
-	for f in $(find -L -not -path './reference/*' -name '*.bin'); do
+	for f in $(find -L -path '*/sample_firmwares/*' -not -path './reference/*' -name '*.bin'); do
 		f_b=$(basename ${f})
 		if [[ ${files_list[${f_b}]} == 1 ]]; then
 			continue

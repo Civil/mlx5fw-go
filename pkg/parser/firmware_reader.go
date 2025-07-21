@@ -1,7 +1,9 @@
 package parser
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 
@@ -14,9 +16,10 @@ import (
 
 // FirmwareReader provides low-level firmware file reading operations
 type FirmwareReader struct {
-	file   *os.File
-	size   int64
-	logger *zap.Logger
+	file     *os.File
+	filePath string
+	size     int64
+	logger   *zap.Logger
 }
 
 // NewFirmwareReader creates a new firmware reader
@@ -33,9 +36,10 @@ func NewFirmwareReader(filePath string, logger *zap.Logger) (*FirmwareReader, er
 	}
 
 	return &FirmwareReader{
-		file:   file,
-		size:   stat.Size(),
-		logger: logger,
+		file:     file,
+		filePath: filePath,
+		size:     stat.Size(),
+		logger:   logger,
 	}, nil
 }
 
@@ -59,34 +63,15 @@ func (r *FirmwareReader) ReadAt(p []byte, off int64) (n int, err error) {
 	return r.file.ReadAt(p, off)
 }
 
-// ReadUint32BE reads a big-endian uint32 at the specified offset
-func (r *FirmwareReader) ReadUint32BE(offset int64) (uint32, error) {
-	buf := make([]byte, 4)
-	_, err := r.ReadAt(buf, offset)
-	if err != nil {
-		return 0, merry.Wrap(err)
-	}
-	return binary.BigEndian.Uint32(buf), nil
-}
-
-// ReadUint64BE reads a big-endian uint64 at the specified offset
-func (r *FirmwareReader) ReadUint64BE(offset int64) (uint64, error) {
-	buf := make([]byte, 8)
-	_, err := r.ReadAt(buf, offset)
-	if err != nil {
-		return 0, merry.Wrap(err)
-	}
-	return binary.BigEndian.Uint64(buf), nil
-}
-
 // FindMagicPattern searches for the firmware magic pattern at standard offsets
 func (r *FirmwareReader) FindMagicPattern() (uint32, error) {
+	buf := make([]byte, 8)
 	for _, offset := range types.MagicSearchOffsets {
 		if int64(offset) >= r.size {
 			continue
 		}
 
-		magic, err := r.ReadUint64BE(int64(offset))
+		_, err := r.ReadAt(buf, int64(offset))
 		if err != nil {
 			if err == io.EOF {
 				continue
@@ -94,22 +79,13 @@ func (r *FirmwareReader) FindMagicPattern() (uint32, error) {
 			return 0, err
 		}
 
+		magic := binary.BigEndian.Uint64(buf)
 		if magic == types.MagicPattern {
 			r.logger.Debug("Found magic pattern", zap.Uint32("offset", offset))
 			return offset, nil
 		}
 	}
 	return 0, errs.ErrInvalidMagic
-}
-
-// ReadHWPointers reads hardware pointers at the given offset
-func (r *FirmwareReader) ReadHWPointers(offset int64, size int) ([]byte, error) {
-	buf := make([]byte, size)
-	_, err := r.ReadAt(buf, offset)
-	if err != nil {
-		return nil, merry.Wrap(err)
-	}
-	return buf, nil
 }
 
 // ReadSection reads a section of data from the firmware
@@ -128,4 +104,29 @@ func (r *FirmwareReader) ReadSection(offset int64, size uint32) ([]byte, error) 
 		return nil, merry.Wrap(err)
 	}
 	return buf, nil
+}
+
+// FileInfo represents firmware file information
+type FileInfo struct {
+	Size   int64
+	SHA256 string
+}
+
+// GetFileInfo returns information about the firmware file
+func (r *FirmwareReader) GetFileInfo() (*FileInfo, error) {
+	// Calculate SHA256 hash
+	hasher := sha256.New()
+	_, err := r.file.Seek(0, 0)
+	if err != nil {
+		return nil, merry.Wrap(err)
+	}
+	
+	if _, err := io.Copy(hasher, r.file); err != nil {
+		return nil, merry.Wrap(err)
+	}
+	
+	return &FileInfo{
+		Size:   r.size,
+		SHA256: fmt.Sprintf("%x", hasher.Sum(nil)),
+	}, nil
 }

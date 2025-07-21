@@ -35,47 +35,47 @@ type ImageInfo struct {
 	PCISubVendorID uint16 `bin:"len:2"` // offset 0x22
 	
 	// PSID - offset 0x24
-	PSID           [16]byte `bin:"len:16"` // offset 0x24-0x33
+	PSID           [16]byte // offset 0x24-0x33
 	
 	// VSD vendor ID - offset 0x34
 	VSDVendorID    uint16   `bin:"len:2"`   // offset 0x34
 	Reserved5      uint16   `bin:"len:2"`   // offset 0x36
 	
 	// VSD - offset 0x38
-	VSD            [208]byte `bin:"len:208"` // offset 0x38-0x107
+	VSD            [208]byte // offset 0x38-0x107
 	
 	// Image size - offset 0x108
-	ImageSizeData  [8]byte   `bin:"len:8"`   // offset 0x108-0x10f
+	ImageSizeData  [8]byte   // offset 0x108-0x10f
 	
 	// Skip to supported HW IDs - offset 0x110
-	Reserved6      [8]byte   `bin:"len:8"`   // offset 0x110-0x117
+	Reserved6      [8]byte   // offset 0x110-0x117
 	
 	// Supported HW IDs - offset 0x118
-	SupportedHWID  [4]uint32 `bin:"len:16"`  // offset 0x118-0x127
+	SupportedHWID  [4]uint32 // offset 0x118-0x127
 	
 	// INI file num - offset 0x128
 	INIFileNum     uint32    `bin:"len:4"`   // offset 0x128
 	
 	// Skip to product version - offset 0x12c
-	Reserved7      [148]byte `bin:"len:148"` // offset 0x12c-0x1bf
+	Reserved7      [148]byte // offset 0x12c-0x1bf
 	
 	// Product version - offset 0x1c0
-	ProductVer     [16]byte  `bin:"len:16"`  // offset 0x1c0-0x1cf
+	ProductVer     [16]byte  // offset 0x1c0-0x1cf
 	
 	// Description - offset 0x1d0
-	Description    [256]byte `bin:"len:256"` // offset 0x1d0-0x2cf
+	Description    [256]byte // offset 0x1d0-0x2cf
 	
 	// Skip to module versions - offset 0x2d0
-	Reserved8      [48]byte  `bin:"len:48"`  // offset 0x2d0-0x2ff
+	Reserved8      [48]byte  // offset 0x2d0-0x2ff
 	
 	// Module versions - offset 0x300
-	ModuleVersions [64]byte  `bin:"len:64"`  // offset 0x300-0x33f
+	ModuleVersions [64]byte  // offset 0x300-0x33f
 	
 	// Name (part number) - offset 0x340
-	Name           [64]byte  `bin:"len:64"`  // offset 0x340-0x37f
+	Name           [64]byte  // offset 0x340-0x37f
 	
 	// PRS name - offset 0x380
-	PRSName        [128]byte `bin:"len:128"` // offset 0x380-0x3ff
+	PRSName        [128]byte // offset 0x380-0x3ff
 }
 
 // Extract bit fields from SecurityAndVersion

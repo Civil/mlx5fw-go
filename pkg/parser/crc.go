@@ -5,11 +5,15 @@ import (
 )
 
 // CRCCalculator provides CRC calculation methods
-type CRCCalculator struct{}
+type CRCCalculator struct{
+	crcType types.CRCType
+}
 
 // NewCRCCalculator creates a new CRC calculator
 func NewCRCCalculator() *CRCCalculator {
-	return &CRCCalculator{}
+	return &CRCCalculator{
+		crcType: types.CRCInITOCEntry, // Default to software CRC
+	}
 }
 
 // CalculateSoftwareCRC16 calculates software CRC16 using polynomial 0x100b
@@ -57,22 +61,26 @@ func (c *CRCCalculator) CalculateSoftwareCRC16(data []byte) uint16 {
 }
 
 // CalculateHardwareCRC calculates hardware CRC using the special table
+// This matches mstflint's calc_hw_crc implementation
 func (c *CRCCalculator) CalculateHardwareCRC(data []byte) uint16 {
 	if len(data) < 2 {
 		return 0
 	}
 	
-	// Hardware CRC inverts first 2 bytes
-	modifiedData := make([]byte, len(data))
-	copy(modifiedData, data)
-	modifiedData[0] = ^modifiedData[0]
-	modifiedData[1] = ^modifiedData[1]
-	
 	crc := uint16(0xFFFF)
-	for _, b := range modifiedData {
-		tbl_idx := ((crc >> 8) ^ uint16(b)) & 0xFF
-		crc = ((crc << 8) ^ types.CRC16Table2[tbl_idx]) & 0xFFFF
+	for i := 0; i < len(data); i++ {
+		var d byte
+		if i > 1 {
+			d = data[i]
+		} else {
+			d = ^data[i]  // Invert first 2 bytes
+		}
+		tableIndex := (crc ^ uint16(d)) & 0xFF
+		crc = (crc >> 8) ^ types.CRC16Table2[tableIndex]
 	}
+	
+	// Swap bytes
+	crc = ((crc << 8) & 0xFF00) | ((crc >> 8) & 0xFF)
 	
 	return crc
 }
@@ -131,4 +139,25 @@ func (c *CRCCalculator) VerifyCRC(data []byte, expectedCRC uint16, useHardwareCR
 	}
 	
 	return calculatedCRC == expectedCRC
+}
+
+// Calculate implements the CRCCalculator interface
+func (c *CRCCalculator) Calculate(data []byte) uint32 {
+	// Default to software CRC16
+	return uint32(c.CalculateSoftwareCRC16(data))
+}
+
+// CalculateWithParams implements the CRCCalculator interface
+func (c *CRCCalculator) CalculateWithParams(data []byte, polynomial, initial, xorOut uint32) uint32 {
+	// For hardware CRC, we use the special hardware CRC calculation
+	if polynomial == types.CRCPolynomial && initial == 0xFFFF && xorOut == 0xFFFF {
+		return uint32(c.CalculateHardwareCRC(data))
+	}
+	// For other parameters, use software CRC
+	return uint32(c.CalculateSoftwareCRC16(data))
+}
+
+// GetType implements the CRCCalculator interface
+func (c *CRCCalculator) GetType() types.CRCType {
+	return c.crcType
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/types"
+	"github.com/Civil/mlx5fw-go/pkg/types/sections"
 )
 
 // Parser implements FS4 firmware parsing
@@ -19,13 +20,15 @@ type Parser struct {
 	logger       *zap.Logger
 	crc          *parser.CRCCalculator
 	tocReader    *parser.TOCReader
+	sectionFactory interfaces.SectionFactory
 	
 	// Parsed data
 	magicOffset  uint32
 	hwPointers   *types.FS4HWPointers
 	itocHeader   *types.ITOCHeader
 	dtocHeader   *types.ITOCHeader
-	sections     map[uint16][]*interfaces.Section
+	sections     map[uint16][]interfaces.SectionInterface // Updated to use new interface
+	legacySections map[uint16][]*interfaces.Section // Keep legacy for backward compatibility
 	metadata     *types.FirmwareMetadata
 	
 	// Addresses
@@ -47,8 +50,10 @@ func NewParser(reader *parser.FirmwareReader, logger *zap.Logger) *Parser {
 		reader:    reader,
 		logger:    logger,
 		crc:       parser.NewCRCCalculator(),
-		tocReader: parser.NewTOCReader(logger),
-		sections:  make(map[uint16][]*interfaces.Section),
+		tocReader: parser.NewTOCReaderWithFactory(logger, sections.NewDefaultSectionFactory()),
+		sectionFactory: sections.NewDefaultSectionFactory(),
+		sections:  make(map[uint16][]interfaces.SectionInterface),
+		legacySections: make(map[uint16][]*interfaces.Section),
 		dtocHeaderValid: true, // Default to true since DTOC is optional
 	}
 }
@@ -126,11 +131,11 @@ func (p *Parser) Parse() error {
 
 // parseHWPointers reads and parses hardware pointers
 func (p *Parser) parseHWPointers() error {
-	// HW pointers are at magic offset + 0x18
-	hwPointersOffset := int64(p.magicOffset + 0x18)
+	// HW pointers are at magic offset + HWPointersOffsetFromMagic
+	hwPointersOffset := int64(p.magicOffset + types.HWPointersOffsetFromMagic)
 	
-	// Read 128 bytes for FS4 (16 entries * 8 bytes)
-	hwData, err := p.reader.ReadHWPointers(hwPointersOffset, 128)
+	// Read HWPointersSize bytes for FS4 (16 entries * 8 bytes)
+	hwData, err := p.reader.ReadSection(hwPointersOffset, types.HWPointersSize)
 	if err != nil {
 		return err
 	}
@@ -253,10 +258,16 @@ func (p *Parser) parseITOC() error {
 		return merry.Wrap(err)
 	}
 	
-	// Use the generic TOC reader
-	sections, err := p.tocReader.ReadTOCSections(firmwareData, p.itocAddr, false)
+	// Use the generic TOC reader for legacy sections
+	legacySections, err := p.tocReader.ReadTOCSections(firmwareData, p.itocAddr, false)
 	if err != nil {
 		return err
+	}
+	
+	// Also read new sections
+	newSections, err := p.tocReader.ReadTOCSectionsNew(firmwareData, p.itocAddr, false)
+	if err != nil {
+		p.logger.Warn("Failed to read new sections, using legacy only", zap.Error(err))
 	}
 	
 	// Parse the header for storage
@@ -266,7 +277,7 @@ func (p *Parser) parseITOC() error {
 	}
 	
 	// Store sections
-	for _, section := range sections {
+	for i, section := range legacySections {
 		// Get section name for logging
 		sectionInfo := interfaces.SectionInfo{
 			Type:     section.Type,
@@ -282,11 +293,22 @@ func (p *Parser) parseITOC() error {
 			zap.Uint64("offset", section.Offset),
 			zap.Uint32("size", section.Size))
 		
-		// Store section - append to list to handle duplicates
-		if p.sections[section.Type] == nil {
-			p.sections[section.Type] = []*interfaces.Section{}
+		// Store legacy section
+		if p.legacySections[section.Type] == nil {
+			p.legacySections[section.Type] = []*interfaces.Section{}
 		}
-		p.sections[section.Type] = append(p.sections[section.Type], section)
+		p.legacySections[section.Type] = append(p.legacySections[section.Type], section)
+		
+		// Store new section if available
+		if newSections != nil && i < len(newSections) {
+			if p.sections[section.Type] == nil {
+				p.sections[section.Type] = []interfaces.SectionInterface{}
+			}
+			p.sections[section.Type] = append(p.sections[section.Type], newSections[i])
+		} else {
+			// Create new section from legacy
+			p.addLegacySection(section)
+		}
 	}
 	
 	return nil
@@ -338,11 +360,8 @@ func (p *Parser) parseDTOC() error {
 			zap.Uint64("offset", section.Offset),
 			zap.Uint32("size", section.Size))
 		
-		// Store section - append to list to handle duplicates
-		if p.sections[section.Type] == nil {
-			p.sections[section.Type] = []*interfaces.Section{}
-		}
-		p.sections[section.Type] = append(p.sections[section.Type], section)
+		// Store section
+		p.addLegacySection(section)
 	}
 	
 	return nil
@@ -360,13 +379,57 @@ func (p *Parser) buildMetadata() {
 }
 
 // GetSections returns all parsed sections
+// GetSections returns sections in legacy format for backward compatibility
 func (p *Parser) GetSections() map[uint16][]*interfaces.Section {
+	return p.legacySections
+}
+
+// GetSectionsNew returns sections using the new interface
+func (p *Parser) GetSectionsNew() map[uint16][]interfaces.SectionInterface {
 	return p.sections
 }
 
 // GetFormat returns the firmware format
 func (p *Parser) GetFormat() types.FirmwareFormat {
 	return types.FormatFS4
+}
+
+// addSection adds a section to both legacy and new maps
+func (p *Parser) addSection(section interfaces.SectionInterface, legacySection *interfaces.Section) {
+	sectionType := section.Type()
+	p.sections[sectionType] = append(p.sections[sectionType], section)
+	p.legacySections[sectionType] = append(p.legacySections[sectionType], legacySection)
+}
+
+// addLegacySection adds a legacy section and creates a new section interface for it
+func (p *Parser) addLegacySection(section *interfaces.Section) {
+	// Create new section interface from legacy
+	newSection, err := p.sectionFactory.CreateSection(
+		section.Type,
+		section.Offset,
+		section.Size,
+		section.CRCType,
+		section.CRC,
+		section.IsEncrypted,
+		section.IsDeviceData,
+		section.Entry,
+		section.IsFromHWPointer,
+	)
+	if err != nil {
+		p.logger.Warn("Failed to create new section from legacy",
+			zap.Uint16("type", section.Type),
+			zap.Error(err))
+		// Still add to legacy map
+		p.legacySections[section.Type] = append(p.legacySections[section.Type], section)
+		return
+	}
+	
+	// Parse data if available
+	if section.Data != nil {
+		newSection.Parse(section.Data)
+	}
+	
+	p.addSection(newSection, section)
 }
 
 // GetDTOCAddress returns the DTOC address
@@ -520,7 +583,7 @@ func (p *Parser) parseToolsArea() error {
 		}
 		
 		// Standard TOOLS_AREA size
-		toolsAreaSize := uint32(0x40)
+		toolsAreaSize := uint32(types.ToolsAreaSize)
 		section := &interfaces.Section{
 			Type:         types.SectionTypeToolsArea,
 			Offset:       uint64(toolsAreaAddr),
@@ -529,10 +592,7 @@ func (p *Parser) parseToolsArea() error {
 			IsDeviceData: false,
 		}
 		
-		if p.sections[section.Type] == nil {
-			p.sections[section.Type] = []*interfaces.Section{}
-		}
-		p.sections[section.Type] = append(p.sections[section.Type], section)
+		p.addLegacySection(section)
 		
 		p.logger.Debug("Found TOOLS_AREA section",
 			zap.Uint32("address", toolsAreaAddr),
@@ -574,10 +634,7 @@ func (p *Parser) parseBoot2() error {
 		IsDeviceData: false,
 	}
 	
-	if p.sections[section.Type] == nil {
-		p.sections[section.Type] = []*interfaces.Section{}
-	}
-	p.sections[section.Type] = append(p.sections[section.Type], section)
+	p.addLegacySection(section)
 	
 	p.logger.Debug("Found BOOT2 section",
 		zap.Uint64("offset", section.Offset),
@@ -639,10 +696,7 @@ func (p *Parser) parseHashesTable() error {
 	}
 	
 	// Store section
-	if p.sections[section.Type] == nil {
-		p.sections[section.Type] = []*interfaces.Section{}
-	}
-	p.sections[section.Type] = append(p.sections[section.Type], section)
+	p.addLegacySection(section)
 	
 	p.logger.Info("Found HASHES_TABLE section",
 		zap.Uint64("offset", section.Offset),
@@ -741,10 +795,7 @@ func (p *Parser) parseEncryptedFirmware() error {
 				zap.Uint32("size", section.Size))
 			
 			// Store section - append to list to handle duplicates
-			if p.sections[section.Type] == nil {
-				p.sections[section.Type] = []*interfaces.Section{}
-			}
-			p.sections[section.Type] = append(p.sections[section.Type], section)
+			p.addLegacySection(section)
 		}
 		
 		// For encrypted firmware, also parse IMAGE_INFO from hardware pointer if available
@@ -754,15 +805,12 @@ func (p *Parser) parseEncryptedFirmware() error {
 			section := &interfaces.Section{
 				Type:         types.SectionTypeImageInfo,
 				Offset:       uint64(imageInfoAddr),
-				Size:         0x600, // Standard IMAGE_INFO size
+				Size:         types.ImageInfoSize, // Standard IMAGE_INFO size (1024 bytes)
 				CRCType:      types.CRCInSection,
 				IsDeviceData: false,
 			}
 			
-			if p.sections[section.Type] == nil {
-				p.sections[section.Type] = []*interfaces.Section{}
-			}
-			p.sections[section.Type] = append(p.sections[section.Type], section)
+			p.addLegacySection(section)
 		}
 		
 		return nil
@@ -784,16 +832,13 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 		section := &interfaces.Section{
 			Type:         types.SectionTypeImageInfo,
 			Offset:       uint64(imageInfoAddr),
-			Size:         0x600, // Standard IMAGE_INFO size
+			Size:         types.ImageInfoSize, // Standard IMAGE_INFO size (1024 bytes)
 			CRCType:      types.CRCInSection,
 			IsDeviceData: false,
 			IsFromHWPointer: true,  // Mark as from HW pointer in encrypted firmware
 		}
 		
-		if p.sections[section.Type] == nil {
-			p.sections[section.Type] = []*interfaces.Section{}
-		}
-		p.sections[section.Type] = append(p.sections[section.Type], section)
+		p.addLegacySection(section)
 		
 		p.logger.Info("Added IMAGE_INFO section from HW pointer",
 			zap.Uint64("offset", section.Offset),
@@ -816,10 +861,7 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 					IsDeviceData: false,
 				}
 				
-				if p.sections[section.Type] == nil {
-					p.sections[section.Type] = []*interfaces.Section{}
-				}
-				p.sections[section.Type] = append(p.sections[section.Type], section)
+				p.addLegacySection(section)
 				
 				p.logger.Info("Added BOOT2 section",
 					zap.Uint64("offset", section.Offset),
@@ -865,7 +907,7 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 		_, err := p.reader.ReadSection(int64(toolsAreaAddr), 16)
 		if err == nil {
 			// Check if it looks like valid tools area
-			toolsAreaSize := uint32(0x40) // Standard size
+			toolsAreaSize := uint32(types.ToolsAreaSize) // Standard size
 			section := &interfaces.Section{
 				Type:         types.SectionTypeToolsArea,
 				Offset:       uint64(toolsAreaAddr),
@@ -874,10 +916,7 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 				IsDeviceData: false,
 			}
 			
-			if p.sections[section.Type] == nil {
-				p.sections[section.Type] = []*interfaces.Section{}
-			}
-			p.sections[section.Type] = append(p.sections[section.Type], section)
+			p.addLegacySection(section)
 			
 			p.logger.Debug("Found TOOLS_AREA section",
 				zap.Uint32("address", toolsAreaAddr),
@@ -893,6 +932,47 @@ func (p *Parser) IsEncrypted() bool {
 	return p.isEncrypted
 }
 
+// GetMagicOffset returns the offset of the magic pattern
+func (p *Parser) GetMagicOffset() uint32 {
+	return p.magicOffset
+}
+
+// GetReader returns the firmware reader
+func (p *Parser) GetReader() *parser.FirmwareReader {
+	return p.reader
+}
+
+// GetHWPointersRaw returns the raw hardware pointers data and parsed structure
+func (p *Parser) GetHWPointersRaw() ([]byte, *types.FS4HWPointers, error) {
+	hwPointersOffset := p.magicOffset + types.HWPointersOffsetFromMagic
+	rawData, err := p.reader.ReadSection(int64(hwPointersOffset), types.HWPointersSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rawData, p.hwPointers, nil
+}
+
+// GetITOCRawData returns the raw ITOC header data
+func (p *Parser) GetITOCRawData() ([]byte, error) {
+	if p.itocAddr == 0 {
+		return nil, merry.New("ITOC address not found")
+	}
+	return p.reader.ReadSection(int64(p.itocAddr), types.ITOCHeaderSize)
+}
+
+// GetDTOCRawData returns the raw DTOC header data
+func (p *Parser) GetDTOCRawData() ([]byte, error) {
+	if p.dtocAddr == 0 {
+		return nil, merry.New("DTOC address not found")
+	}
+	return p.reader.ReadSection(int64(p.dtocAddr), types.ITOCHeaderSize)
+}
+
+// ReadSectionData reads section data from the firmware
+func (p *Parser) ReadSectionData(sectionType uint16, offset uint64, size uint32) ([]byte, error) {
+	return p.reader.ReadSection(int64(offset), size)
+}
+
 // IsITOCValid returns true if the ITOC header CRC is valid
 func (p *Parser) IsITOCValid() bool {
 	return p.itocHeaderValid
@@ -901,4 +981,9 @@ func (p *Parser) IsITOCValid() bool {
 // IsDTOCValid returns true if the DTOC header CRC is valid
 func (p *Parser) IsDTOCValid() bool {
 	return p.dtocHeaderValid
+}
+
+// NewGapHandler creates a gap handler for this parser
+func (p *Parser) NewGapHandler() *parser.GapHandler {
+	return parser.NewGapHandler()
 }

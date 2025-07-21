@@ -39,8 +39,9 @@ func runQueryCommand(cmd *cobra.Command, args []string, fullOutput bool, jsonOut
 		return err
 	}
 
-	// Return error if ITOC was invalid
-	if hasInvalidITOC {
+	// Return error if ITOC was invalid and firmware is not encrypted
+	// For encrypted firmware, invalid ITOC is expected
+	if hasInvalidITOC && !fs4Parser.IsEncrypted() {
 		return fmt.Errorf("ITOC header is invalid")
 	}
 

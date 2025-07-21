@@ -23,7 +23,7 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	}
 
 	// Get IMAGE_INFO section if available
-	imageInfoSections := p.sections[types.SectionTypeImageInfo]
+	imageInfoSections := p.legacySections[types.SectionTypeImageInfo]
 	if len(imageInfoSections) > 0 {
 		section := imageInfoSections[0]
 		p.logger.Debug("Found IMAGE_INFO section", 
@@ -85,7 +85,7 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	// Get GUIDs/MACs info from DEV_INFO section (0xe1 in DTOC becomes 0xe0e1)
 	// Based on mstflint's fs3_ops.cpp:301 Fs3Operations::GetImageInfo
 	devInfoType := uint16(types.SectionTypeDevInfo | 0xE000)
-	devInfoSections := p.sections[devInfoType]
+	devInfoSections := p.legacySections[devInfoType]
 	p.logger.Debug("Looking for DEV_INFO sections", 
 		zap.Int("count", len(devInfoSections)),
 		zap.Uint32("type", uint32(devInfoType)))
@@ -133,7 +133,7 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	}
 
 	// Parse ROM_CODE section for ROM info
-	romCodeSections := p.sections[types.SectionTypeROMCode]
+	romCodeSections := p.legacySections[types.SectionTypeROMCode]
 	if len(romCodeSections) > 0 {
 		section := romCodeSections[0]
 		if section.Data == nil {
@@ -160,7 +160,7 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	if info.BaseGUID == 0 && info.BaseMAC == 0 {
 		// MFG_INFO is type 0xe0 in DTOC (becomes 0xe0e0)
 		mfgInfoType := uint16(0xe0 | 0xE000)
-		mfgInfoSections := p.sections[mfgInfoType]
+		mfgInfoSections := p.legacySections[mfgInfoType]
 		p.logger.Debug("Looking for MFG_INFO sections", 
 			zap.Int("count", len(mfgInfoSections)),
 			zap.Uint32("type", uint32(mfgInfoType)))
@@ -218,13 +218,13 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	for _, sections := range p.sections {
 		for _, section := range sections {
 			sectionInfo := interfaces.SectionInfo{
-				Type:         section.Type,
-				TypeName:     types.GetSectionTypeName(section.Type),
-				Offset:       section.Offset,
-				Size:         section.Size,
-				CRCType:      section.CRCType,
-				IsEncrypted:  section.IsEncrypted,
-				IsDeviceData: section.IsDeviceData,
+				Type:         section.Type(),
+				TypeName:     types.GetSectionTypeName(section.Type()),
+				Offset:       section.Offset(),
+				Size:         section.Size(),
+				CRCType:      section.CRCType(),
+				IsEncrypted:  section.IsEncrypted(),
+				IsDeviceData: section.IsDeviceData(),
 			}
 			info.Sections = append(info.Sections, sectionInfo)
 		}

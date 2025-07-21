@@ -37,6 +37,20 @@ const (
 	CRCInSection CRCType = 2
 )
 
+// String returns the string representation of the CRC type
+func (c CRCType) String() string {
+	switch c {
+	case CRCInITOCEntry:
+		return "IN_ITOC_ENTRY"
+	case CRCNone:
+		return "NONE"
+	case CRCInSection:
+		return "IN_SECTION"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // FirmwareMetadata contains parsed firmware metadata
 type FirmwareMetadata struct {
 	Format         FirmwareFormat

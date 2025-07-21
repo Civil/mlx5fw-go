@@ -132,125 +132,7 @@ func TestFirmwareReader_ReadAt(t *testing.T) {
 	}
 }
 
-func TestFirmwareReader_ReadUint32BE(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	
-	// Create test data with known uint32 values
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.BigEndian, uint32(0x12345678))
-	binary.Write(&buf, binary.BigEndian, uint32(0xABCDEF00))
-	
-	filename := createTestFile(t, buf.Bytes())
-	defer os.Remove(filename)
-	
-	reader, err := NewFirmwareReader(filename, logger)
-	if err != nil {
-		t.Fatalf("NewFirmwareReader() error = %v", err)
-	}
-	defer reader.Close()
-	
-	tests := []struct {
-		name      string
-		offset    int64
-		expected  uint32
-		expectErr bool
-	}{
-		{
-			name:     "Read first uint32",
-			offset:   0,
-			expected: 0x12345678,
-		},
-		{
-			name:     "Read second uint32",
-			offset:   4,
-			expected: 0xABCDEF00,
-		},
-		{
-			name:      "Read beyond EOF",
-			offset:    8,
-			expectErr: true,
-		},
-	}
-	
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := reader.ReadUint32BE(tt.offset)
-			
-			if tt.expectErr {
-				if err == nil {
-					t.Error("ReadUint32BE() expected error but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("ReadUint32BE() error = %v", err)
-				}
-				if got != tt.expected {
-					t.Errorf("ReadUint32BE() = 0x%08X, want 0x%08X", got, tt.expected)
-				}
-			}
-		})
-	}
-}
 
-func TestFirmwareReader_ReadUint64BE(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	
-	// Create test data with known uint64 values
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.BigEndian, uint64(0x123456789ABCDEF0))
-	binary.Write(&buf, binary.BigEndian, uint64(0xFEDCBA9876543210))
-	
-	filename := createTestFile(t, buf.Bytes())
-	defer os.Remove(filename)
-	
-	reader, err := NewFirmwareReader(filename, logger)
-	if err != nil {
-		t.Fatalf("NewFirmwareReader() error = %v", err)
-	}
-	defer reader.Close()
-	
-	tests := []struct {
-		name      string
-		offset    int64
-		expected  uint64
-		expectErr bool
-	}{
-		{
-			name:     "Read first uint64",
-			offset:   0,
-			expected: 0x123456789ABCDEF0,
-		},
-		{
-			name:     "Read second uint64",
-			offset:   8,
-			expected: 0xFEDCBA9876543210,
-		},
-		{
-			name:      "Read beyond EOF",
-			offset:    16,
-			expectErr: true,
-		},
-	}
-	
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := reader.ReadUint64BE(tt.offset)
-			
-			if tt.expectErr {
-				if err == nil {
-					t.Error("ReadUint64BE() expected error but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("ReadUint64BE() error = %v", err)
-				}
-				if got != tt.expected {
-					t.Errorf("ReadUint64BE() = 0x%016X, want 0x%016X", got, tt.expected)
-				}
-			}
-		})
-	}
-}
 
 func TestFirmwareReader_FindMagicPattern(t *testing.T) {
 	logger := zaptest.NewLogger(t)
@@ -434,42 +316,6 @@ func TestFirmwareReader_Close(t *testing.T) {
 		t.Errorf("Second Close() error = %v", err)
 	}
 }
-
-func TestFirmwareReader_ReadHWPointers(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	
-	// Create test data with HW pointers
-	hwPointers := make([]byte, 128)
-	for i := 0; i < len(hwPointers); i += 8 {
-		binary.BigEndian.PutUint32(hwPointers[i:], uint32(0x1000+i))
-		binary.BigEndian.PutUint32(hwPointers[i+4:], 0)
-	}
-	
-	filename := createTestFile(t, hwPointers)
-	defer os.Remove(filename)
-	
-	reader, err := NewFirmwareReader(filename, logger)
-	if err != nil {
-		t.Fatalf("NewFirmwareReader() error = %v", err)
-	}
-	defer reader.Close()
-	
-	data, err := reader.ReadHWPointers(0, 128)
-	if err != nil {
-		t.Errorf("ReadHWPointers() error = %v", err)
-	}
-	
-	if len(data) != 128 {
-		t.Errorf("ReadHWPointers() returned %d bytes, want 128", len(data))
-	}
-	
-	// Verify first pointer
-	firstPtr := binary.BigEndian.Uint32(data[0:4])
-	if firstPtr != 0x1000 {
-		t.Errorf("First HW pointer = 0x%X, want 0x1000", firstPtr)
-	}
-}
-
 func BenchmarkFirmwareReader_ReadSection(b *testing.B) {
 	logger := zap.NewNop()
 	
@@ -565,9 +411,9 @@ func TestFirmwareReader_Integration(t *testing.T) {
 	}
 	
 	// Test reading HW pointers
-	hwData, err := reader.ReadHWPointers(int64(magicOffset+0x18), 128)
+	hwData, err := reader.ReadSection(int64(magicOffset+0x18), 128)
 	if err != nil {
-		t.Fatalf("ReadHWPointers() error = %v", err)
+		t.Fatalf("ReadSection() error = %v", err)
 	}
 	
 	// Verify Boot2 pointer
