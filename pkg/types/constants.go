@@ -70,6 +70,17 @@ const (
 	
 	// Firmware format identifiers
 	FS3Magic = 0x4D544657 // "MTFW" for FS3
+	
+	// Boot version offset from magic pattern
+	// Based on mstflint's FS4_BOOT_VERSION_OFFSET in mlxfwops/lib/fw_ops.h:492
+	BootVersionOffset = 0x10           // Offset to boot version structure from magic pattern
+	
+	// Image format version values
+	// Based on mstflint's enum in mlxfwops/lib/fw_ops.h:523-526
+	ImageFormatVersionFS2 = 0
+	ImageFormatVersionFS3 = 3
+	ImageFormatVersionFS4 = 1
+	ImageFormatVersionFS5 = 2
 )
 
 

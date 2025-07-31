@@ -165,7 +165,16 @@ func GetSectionTypeName(sectionType uint16) string {
 	case SectionTypeBoot2:
 		return "BOOT2"
 	default:
-		return fmt.Sprintf("UNKNOWN_0x%02X", sectionType)
+		// Check if it's a DTOC type (0xE0XX range)
+		if sectionType >= 0xE000 && sectionType <= 0xE0FF {
+			// Extract the lower byte to check against known DTOC types
+			dtocType := uint8(sectionType & 0xFF)
+			name := GetDTOCSectionTypeName(dtocType)
+			if !strings.HasPrefix(name, "UNKNOWN") {
+				return name
+			}
+		}
+		return fmt.Sprintf("UNKNOWN_0x%04X", sectionType)
 	}
 }
 

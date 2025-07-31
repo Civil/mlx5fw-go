@@ -150,8 +150,11 @@ Example usage:
 	var extractOutputDir string
 	extractCmd.Flags().StringVarP(&extractOutputDir, "output", "o", ".", "Output directory for extracted sections")
 	
-	// Add JSON export flag (optional)
-	extractCmd.Flags().Bool("json", false, "Export parsed data as JSON for known section types")
+	// Add JSON export flag (deprecated, kept for backwards compatibility)
+	extractCmd.Flags().Bool("json", false, "DEPRECATED: JSON is now always exported for parsed sections")
+	
+	// Add keep-binary flag
+	extractCmd.Flags().Bool("keep-binary", false, "Keep binary representation alongside JSON (by default, only JSON is saved for parsed sections)")
 	
 	extractCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := ValidateFirmwarePath(firmwarePath); err != nil {
@@ -220,14 +223,17 @@ Examples:
 	reassembleCmd.Flags().StringVarP(&reassembleInputDir, "input", "i", "", "Input directory containing extracted sections (required)")
 	reassembleCmd.Flags().StringVarP(&reassembleOutputFile, "output", "o", "", "Output firmware file (required)")
 	reassembleCmd.Flags().BoolVar(&reassembleVerifyCRC, "verify-crc", false, "Verify CRC values during reassembly")
+	reassembleCmd.Flags().Bool("binary-only", false, "Force binary-only mode, ignore JSON files (by default, JSON is preferred)")
 	reassembleCmd.MarkFlagRequired("input")
 	reassembleCmd.MarkFlagRequired("output")
 	
 	reassembleCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		binaryOnly, _ := cmd.Flags().GetBool("binary-only")
 		opts := ReassembleOptions{
 			InputDir:   reassembleInputDir,
 			OutputFile: reassembleOutputFile,
 			VerifyCRC:  reassembleVerifyCRC,
+			BinaryOnly: binaryOnly,
 		}
 		return runReassembleCommand(cmd, args, opts)
 	}

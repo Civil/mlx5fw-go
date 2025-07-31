@@ -7,7 +7,6 @@ import (
 	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
-	"github.com/ghostiam/binstruct"
 )
 
 // ImageInfoSection represents an Image Info section
@@ -36,8 +35,18 @@ func (s *ImageInfoSection) Parse(data []byte) error {
 	
 	s.Info = &types.ImageInfo{}
 	
-	if err := binstruct.UnmarshalBE(data, s.Info); err != nil {
+	if err := s.Info.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
+	}
+	
+	// Workaround for VSD vendor ID alignment issue
+	// The VSD vendor ID appears to be at offset 0x36 instead of 0x34
+	if len(data) >= 0x38 {
+		vsdVendorBytes := data[0x36:0x38]
+		actualVendor := uint16(vsdVendorBytes[0]) | uint16(vsdVendorBytes[1])<<8
+		if actualVendor != 0 && s.Info.VSDVendorID == 0 {
+			s.Info.VSDVendorID = actualVendor
+		}
 	}
 	
 	return nil
@@ -82,8 +91,39 @@ func (s *ImageInfoSection) MarshalJSON() ([]byte, error) {
 			"description": s.Info.GetDescriptionString(),
 			"vsd": s.Info.GetVSDString(),
 			"product_ver": s.Info.GetProductVerString(),
+			"product_ver_raw": s.Info.ProductVer,
 			"security_mode": s.Info.GetSecurityMode(),
 			"security_attributes": s.Info.GetSecurityAttributesString(),
+			"pci_device_id": s.Info.PCIDeviceID,
+			"pci_vendor_id": s.Info.PCIVendorID,
+			"pci_subsystem_id": s.Info.PCISubsystemID,
+			"pci_subvendor_id": s.Info.PCISubVendorID,
+			"fw_ver_major": s.Info.FWVerMajor,
+			"reserved2": s.Info.Reserved2,
+			"fw_ver_minor": s.Info.FWVerMinor,
+			"fw_ver_subminor": s.Info.FWVerSubminor,
+			"mic_ver_major": s.Info.MICVerMajor,
+			"reserved4": s.Info.Reserved4,
+			"mic_ver_minor": s.Info.MICVerMinor,
+			"mic_ver_subminor": s.Info.MICVerSubminor,
+			"reserved3a": s.Info.Reserved3a,
+			"hour": s.Info.Hour,
+			"minutes": s.Info.Minutes,
+			"seconds": s.Info.Seconds,
+			"day": s.Info.Day,
+			"month": s.Info.Month,
+			"year": s.Info.Year,
+			"security_and_version": s.Info.GetSecurityAndVersion(),
+			"reserved5a": s.Info.Reserved5a,
+			"vsd_vendor_id": s.Info.VSDVendorID,
+			"image_size_data": s.Info.ImageSizeData,
+			"reserved6": s.Info.Reserved6,
+			"supported_hw_ids": s.Info.SupportedHWID,
+			"ini_file_num": s.Info.INIFileNum,
+			"reserved7": s.Info.Reserved7,
+			"reserved8": s.Info.Reserved8,
+			"module_versions": s.Info.ModuleVersions,
+			"name": s.Info.GetNameString(),
 		},
 	})
 }

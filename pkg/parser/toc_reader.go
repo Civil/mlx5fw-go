@@ -1,10 +1,11 @@
 package parser
 
 import (
+	"fmt"
+	
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
-	"github.com/ghostiam/binstruct"
 	"go.uber.org/zap"
 )
 
@@ -28,14 +29,15 @@ func NewTOCReaderWithFactory(logger *zap.Logger, factory interfaces.SectionFacto
 }
 
 // ReadTOCHeader reads and validates a TOC header
-func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*types.ITOCHeader, error) {
+func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*types.ITOCHeaderAnnotated, error) {
 	if tocAddr+32 > uint32(len(data)) {
 		return nil, merry.New("TOC header out of bounds")
 	}
 
-	header := &types.ITOCHeader{}
+	// Use annotated version for unmarshaling
+	header := &types.ITOCHeaderAnnotated{}
 	headerData := data[tocAddr : tocAddr+32]
-	if err := binstruct.UnmarshalBE(headerData, header); err != nil {
+	if err := header.Unmarshal(headerData); err != nil {
 		return nil, merry.Wrap(err)
 	}
 
@@ -52,8 +54,8 @@ func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*ty
 }
 
 // ReadTOCEntries reads all TOC entries until end marker
-func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEntry, error) {
-	var entries []*types.ITOCEntry
+func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEntryAnnotated, error) {
+	var entries []*types.ITOCEntryAnnotated
 	entriesOffset := tocAddr + 32 // After header
 
 	for i := 0; ; i++ {
@@ -62,9 +64,28 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEn
 			break
 		}
 
-		entry := &types.ITOCEntry{}
-		copy(entry.Data[:], data[entryOffset:entryOffset+32])
-		entry.ParseFields()
+		// Use annotated version for unmarshaling
+		entry := &types.ITOCEntryAnnotated{}
+		entryData := data[entryOffset:entryOffset+32]
+		if err := entry.Unmarshal(entryData); err != nil {
+			// Log error but continue reading other entries
+			r.logger.Warn("Failed to unmarshal ITOC entry",
+				zap.Int("index", i),
+				zap.Error(err))
+			continue
+		}
+		
+		
+		// Debug: Log CRC info for certain section types
+		if entry.Type == uint8(types.SectionTypeImageSignature256) || 
+		   entry.Type == uint8(types.SectionTypeFwNvLog) ||
+		   entry.Type == uint8(types.SectionTypeHMACDigest) {
+			r.logger.Debug("ITOC entry CRC info",
+				zap.String("type", types.GetSectionTypeName(uint16(entry.Type))),
+				zap.Bool("no_crc", entry.GetNoCRC()),
+				zap.Uint8("crc_field", entry.CRCField),
+				zap.String("raw_bytes_25_26", fmt.Sprintf("%02x %02x", entryData[25], entryData[26])))
+		}
 
 		// Stop at end marker (type 0xFF)
 		if entry.GetType() == 0xFF {
@@ -72,7 +93,7 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEn
 		}
 
 		// Skip empty entries (all zeros except potentially the type field)
-		if entry.Size == 0 && entry.FlashAddr == 0 {
+		if entry.GetSize() == 0 && entry.GetFlashAddr() == 0 {
 			continue
 		}
 
@@ -115,16 +136,20 @@ func (r *TOCReader) ReadTOCSections(data []byte, tocAddr uint32, isDTOC bool) ([
 		sectionType := entry.GetType()
 		if isDTOC {
 			// DTOC sections use different type mapping
-			sectionType = entry.GetType() | 0xE000
+			// DTOC entry types < 0x20 need to be OR'd with 0xE000
+			// DTOC entry types >= 0xE0 are already in the correct range
+			if sectionType < 0x20 {
+				sectionType = sectionType | 0xE000
+			}
 		}
 
 		section := &interfaces.Section{
 			Type:         sectionType,
-			Offset:       uint64(entry.FlashAddr),
-			Size:         entry.Size,
+			Offset:       uint64(entry.GetFlashAddr()),
+			Size:         entry.GetSize(),
 			CRCType:      r.GetCRCType(entry),
 			IsDeviceData: isDTOC,
-			Entry:        entry,
+			Entry:        entry, // Use annotated entry directly
 		}
 
 		r.logger.Debug("Found section",
@@ -167,18 +192,38 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 		sectionType := entry.GetType()
 		if isDTOC {
 			// DTOC sections use different type mapping
-			sectionType = entry.GetType() | 0xE000
+			// DTOC entry types < 0x20 need to be OR'd with 0xE000
+			// DTOC entry types >= 0xE0 are already in the correct range
+			if sectionType < 0x20 {
+				sectionType = sectionType | 0xE000
+			}
 		}
 
+		flashAddr := entry.GetFlashAddr()
+		if sectionType == 16 { // IMAGE_INFO
+			r.logger.Debug("IMAGE_INFO ITOC entry details",
+				zap.Uint32("flash_addr_dwords_raw", entry.FlashAddrDwords),
+				zap.Uint32("flash_addr_bytes", flashAddr),
+				zap.String("hex_addr", fmt.Sprintf("0x%x", flashAddr)))
+		}
+		if sectionType == 4 { // IRON_PREP_CODE
+			r.logger.Debug("IRON_PREP_CODE ITOC entry details",
+				zap.Uint32("size_dwords_raw", entry.SizeDwords),
+				zap.Uint32("size_bytes", entry.GetSize()),
+				zap.String("hex_size", fmt.Sprintf("0x%x", entry.GetSize())),
+				zap.Uint32("flash_addr", flashAddr),
+				zap.String("hex_addr", fmt.Sprintf("0x%x", flashAddr)))
+		}
+		
 		section, err := r.sectionFactory.CreateSection(
 			uint16(sectionType),
-			uint64(entry.FlashAddr),
-			entry.Size,
+			uint64(flashAddr),
+			entry.GetSize(),
 			r.GetCRCType(entry),
-			uint32(entry.GetCRC()),
+			uint32(entry.SectionCRC),
 			false, // isEncrypted - will be determined later
 			isDTOC,
-			entry,
+			entry, // Use annotated entry directly
 			false, // isFromHWPointer
 		)
 		if err != nil {
@@ -203,8 +248,8 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 }
 
 // GetCRCType determines the CRC type from ITOC entry flags
-func (r *TOCReader) GetCRCType(entry *types.ITOCEntry) types.CRCType {
-	// If CRC field is 1, it means NO CRC
+func (r *TOCReader) GetCRCType(entry *types.ITOCEntryAnnotated) types.CRCType {
+	// If CRC field has bit 207 set (no_crc flag), it means NO CRC
 	if entry.GetNoCRC() {
 		return types.CRCNone
 	}
@@ -222,6 +267,20 @@ func (r *TOCReader) getSectionName(sectionType uint16, isDTOC bool) string {
 		return types.GetDTOCSectionTypeName(uint8(sectionType))
 	}
 	return types.GetSectionTypeName(sectionType)
+}
+
+// GetCRCTypeLegacy determines the CRC type from legacy ITOC entry flags
+func (r *TOCReader) GetCRCTypeLegacy(entry *types.ITOCEntry) types.CRCType {
+	// If CRC field has bit 207 set (no_crc flag), it means NO CRC
+	if entry.GetNoCRC() {
+		return types.CRCNone
+	}
+	// If there's a section CRC value in the ITOC entry, use it
+	if entry.SectionCRC != 0 {
+		return types.CRCInITOCEntry
+	}
+	// Otherwise, CRC is at the end of the section
+	return types.CRCInSection
 }
 
 // ReadTOCRawEntries reads raw TOC entries without converting to sections
@@ -250,8 +309,9 @@ func (r *TOCReader) ReadTOCRawEntries(data []byte, tocAddr uint32, isDTOC bool) 
 		}
 
 		entry := &types.ITOCEntry{}
-		copy(entry.Data[:], data[entryOffset:entryOffset+32])
-		entry.ParseFields()
+		if err := entry.Unmarshal(data[entryOffset:entryOffset+32]); err != nil {
+			continue
+		}
 
 		entries = append(entries, entry)
 	}

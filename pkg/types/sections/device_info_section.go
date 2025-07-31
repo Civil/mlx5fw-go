@@ -6,13 +6,12 @@ import (
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
-	"github.com/ghostiam/binstruct"
 )
 
 // DeviceInfoSection represents a Device Info section
 type DeviceInfoSection struct {
 	*interfaces.BaseSection
-	Info *types.DeviceInfo
+	Info *types.DevInfo
 }
 
 // NewDeviceInfoSection creates a new Device Info section
@@ -26,9 +25,9 @@ func NewDeviceInfoSection(base *interfaces.BaseSection) *DeviceInfoSection {
 func (s *DeviceInfoSection) Parse(data []byte) error {
 	s.SetRawData(data)
 	
-	s.Info = &types.DeviceInfo{}
+	s.Info = &types.DevInfo{}
 	
-	if err := binstruct.UnmarshalBE(data, s.Info); err != nil {
+	if err := s.Info.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
 	
@@ -41,21 +40,42 @@ func (s *DeviceInfoSection) MarshalJSON() ([]byte, error) {
 		return s.BaseSection.MarshalJSON()
 	}
 	
-	return json.Marshal(map[string]interface{}{
+	result := map[string]interface{}{
 		"type":         s.Type(),
 		"type_name":    s.TypeName(),
 		"offset":       s.Offset(),
 		"size":         s.Size(),
-		"device_info": map[string]interface{}{
-			"device_id": s.Info.DeviceID,
-			"vendor_id": s.Info.VendorID,
-			"subsystem_id": s.Info.SubsystemID,
-			"subsystem_vendor_id": s.Info.SubsystemVendorID,
-			"hw_version": s.Info.HWVersion,
-			"hw_revision": s.Info.HWRevision,
-			"capabilities": s.Info.Capabilities,
-			"mac_guid": s.Info.MACGUID,
-			"num_macs": s.Info.NumMACs,
-		},
-	})
+	}
+	
+	if s.Info != nil {
+		result["device_info"] = map[string]interface{}{
+			"signature0": s.Info.Signature0,
+			"signature1": s.Info.Signature1,
+			"signature2": s.Info.Signature2,
+			"signature3": s.Info.Signature3,
+			"minor_version": s.Info.MinorVersion,
+			"major_version": s.Info.MajorVersion,
+			"reserved1": s.Info.Reserved1,
+			"reserved2": s.Info.Reserved2,
+			"guids": map[string]interface{}{
+				"reserved1": s.Info.Guids.Reserved1,
+				"step": s.Info.Guids.Step,
+				"num_allocated": s.Info.Guids.NumAllocated,
+				"reserved2": s.Info.Guids.Reserved2,
+				"uid": s.Info.Guids.UID,
+			},
+			"macs": map[string]interface{}{
+				"reserved1": s.Info.Macs.Reserved1,
+				"step": s.Info.Macs.Step,
+				"num_allocated": s.Info.Macs.NumAllocated,
+				"reserved2": s.Info.Macs.Reserved2,
+				"uid": s.Info.Macs.UID,
+			},
+			"reserved3": s.Info.Reserved3,
+			"reserved4": s.Info.Reserved4,
+			"original_crc": s.Info.CRC,
+		}
+	}
+	
+	return json.Marshal(result)
 }

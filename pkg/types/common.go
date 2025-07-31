@@ -1,5 +1,15 @@
 package types
 
+// nullTerminatedString converts a byte array to a string, stopping at the first null byte
+func nullTerminatedString(data []byte) string {
+	for i, b := range data {
+		if b == 0 {
+			return string(data[:i])
+		}
+	}
+	return string(data)
+}
+
 const (
 	// Magic patterns
 	MagicPattern = 0x4D544657ABCDEF00 // "MTFW\xAB\xCD\xEF\x00" in big endian

@@ -8,7 +8,6 @@ import (
 	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
-	"github.com/ghostiam/binstruct"
 	"go.uber.org/zap"
 )
 
@@ -202,25 +201,25 @@ func (r *Replacer) buildRelocationMap(targetSection *interfaces.Section, sizeDif
 	}
 
 	for i, entry := range itocSections {
-		if entry.FlashAddr == 0 || entry.GetType() == 0xFF {
+		if entry.GetFlashAddr() == 0 || entry.GetType() == 0xFF {
 			continue
 		}
 		
 		reloc := &relocationInfo{
-			newOffset:   entry.FlashAddr,
-			size:        entry.Size,
+			newOffset:   entry.GetFlashAddr(),
+			size:        entry.GetSize(),
 			sectionType: entry.GetType(),
-			crcType:     r.tocReader.GetCRCType(entry),
+			crcType:     r.tocReader.GetCRCTypeLegacy(entry),
 			isITOC:      true,
 			entryIndex:  i,
 		}
 		
 		// Relocate if after target section
-		if entry.FlashAddr > uint32(targetSection.Offset) {
-			reloc.newOffset = uint32(int32(entry.FlashAddr) + sizeDiff)
+		if entry.GetFlashAddr() > uint32(targetSection.Offset) {
+			reloc.newOffset = uint32(int32(entry.GetFlashAddr()) + sizeDiff)
 		}
 		
-		relocMap[entry.FlashAddr] = reloc
+		relocMap[entry.GetFlashAddr()] = reloc
 	}
 
 	// Process DTOC sections
@@ -228,30 +227,30 @@ func (r *Replacer) buildRelocationMap(targetSection *interfaces.Section, sizeDif
 		dtocSections, err := r.readTOCSections(dtocAddr, true)
 		if err == nil { // DTOC might not exist
 			for i, entry := range dtocSections {
-				if entry.FlashAddr == 0 || entry.GetType() == 0xFF {
+				if entry.GetFlashAddr() == 0 || entry.GetType() == 0xFF {
 					continue
 				}
 				
 				// Don't duplicate entries already in relocMap
-				if _, exists := relocMap[entry.FlashAddr]; exists {
+				if _, exists := relocMap[entry.GetFlashAddr()]; exists {
 					continue
 				}
 				
 				reloc := &relocationInfo{
-					newOffset:   entry.FlashAddr,
-					size:        entry.Size,
+					newOffset:   entry.GetFlashAddr(),
+					size:        entry.GetSize(),
 					sectionType: entry.GetType() | 0xE000, // DTOC type mapping
-					crcType:     r.tocReader.GetCRCType(entry),
+					crcType:     r.tocReader.GetCRCTypeLegacy(entry),
 					isDTOC:      true,
 					entryIndex:  i,
 				}
 				
 				// Relocate if after target section
-				if entry.FlashAddr > uint32(targetSection.Offset) {
-					reloc.newOffset = uint32(int32(entry.FlashAddr) + sizeDiff)
+				if entry.GetFlashAddr() > uint32(targetSection.Offset) {
+					reloc.newOffset = uint32(int32(entry.GetFlashAddr()) + sizeDiff)
 				}
 				
-				relocMap[entry.FlashAddr] = reloc
+				relocMap[entry.GetFlashAddr()] = reloc
 			}
 		}
 	}
@@ -394,12 +393,12 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 	entriesOffset := tocAddr + ITOCEntrySize
 
 	for i, entry := range entries {
-		if entry.FlashAddr == 0 || entry.GetType() == 0xFF {
+		if entry.GetFlashAddr() == 0 || entry.GetType() == 0xFF {
 			continue
 		}
 
 		// Check if this entry needs updating
-		reloc, exists := relocMap[entry.FlashAddr]
+		reloc, exists := relocMap[entry.GetFlashAddr()]
 		if !exists {
 			continue
 		}
@@ -410,15 +409,15 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 		}
 
 		// Update entry fields
-		if reloc.newOffset != entry.FlashAddr {
-			entry.FlashAddr = reloc.newOffset
+		if reloc.newOffset != entry.GetFlashAddr() {
+			entry.SetFlashAddr(reloc.newOffset)
 		}
 
 		// Update size for target section
-		if targetSection != nil && entry.FlashAddr == uint32(targetSection.Offset) {
-			entry.Size = newSize
+		if targetSection != nil && entry.GetFlashAddr() == uint32(targetSection.Offset) {
+			entry.SetSize(newSize)
 			r.logger.Info("Updating target section in ITOC",
-				zap.Uint32("offset", entry.FlashAddr),
+				zap.Uint32("offset", entry.GetFlashAddr()),
 				zap.Uint32("oldSize", reloc.size), 
 				zap.Uint32("newSize", newSize))
 		}
@@ -428,7 +427,7 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 			// Read section data at new offset
 			sectionOffset := reloc.newOffset
 			sectionSize := reloc.size
-			if targetSection != nil && entry.FlashAddr == uint32(targetSection.Offset) {
+			if targetSection != nil && entry.GetFlashAddr() == uint32(targetSection.Offset) {
 				sectionSize = newSize
 			}
 			
@@ -488,57 +487,18 @@ func (r *Replacer) serializeITOCEntry(entry *types.ITOCEntry, data []byte) error
 		return merry.New("insufficient buffer for ITOC entry")
 	}
 
-	// Start with the original data to preserve unknown fields
-	copy(data, entry.Data[:])
-
-	// Update known fields using bit manipulation
-	// Type at bits 0-7
-	r.setBits(data, 0, 8, uint32(entry.Type))
-
-	// Size at bits 8-29 (22 bits) - convert to dwords
-	sizeDwords := entry.Size >> 2
-	r.setBits(data, 8, 22, sizeDwords)
-
-	// Param0 at bits 34-63 (30 bits) - preserve original value
-	r.setBits(data, 34, 30, entry.Param0)
-	
-	// Param1 at bits 64-95 (32 bits) - stored as big-endian
-	binary.BigEndian.PutUint32(data[8:12], entry.Param1)
-
-	// Flash address at bits 161-189 (29 bits) - convert to dwords
-	flashAddrDwords := entry.FlashAddr >> 2
-	r.setBits(data, 161, 29, flashAddrDwords)
-
-	// Encrypted flag at bit 192
-	if entry.Encrypted {
-		r.setBits(data, 192, 1, 1)
-	} else {
-		r.setBits(data, 192, 1, 0)
+	// Marshal using annotation-based marshaling
+	marshaledData, err := entry.Marshal()
+	if err != nil {
+		return merry.Wrap(err)
 	}
-
-	// CRC field at bits 205-207
-	r.setBits(data, 205, 3, uint32(entry.CRC))
-
-	// Section CRC at bits 208-223
-	r.setBits(data, 208, 16, uint32(entry.SectionCRC))
-
+	
+	// Copy marshaled data
+	copy(data, marshaledData)
+	
 	return nil
 }
 
-// setBits sets bits in a byte array
-func (r *Replacer) setBits(data []byte, bitOffset, bitCount int, value uint32) {
-	for i := 0; i < bitCount; i++ {
-		bitPos := bitOffset + i
-		byteIdx := bitPos / 8
-		bitIdx := 7 - (bitPos % 8)
-		
-		if value&(1<<uint(bitCount-1-i)) != 0 {
-			data[byteIdx] |= (1 << bitIdx)
-		} else {
-			data[byteIdx] &^= (1 << bitIdx)
-		}
-	}
-}
 
 // updateHWPointers updates hardware pointers that reference relocated sections
 func (r *Replacer) updateHWPointers(workingData []byte, relocMap map[uint32]*relocationInfo) error {
@@ -553,10 +513,10 @@ func (r *Replacer) updateHWPointers(workingData []byte, relocMap map[uint32]*rel
 		return merry.New("HW pointers offset out of bounds")
 	}
 
-	// Read HW pointers
+	// Read HW pointers using annotation-based unmarshaling
 	hwPointers := &types.FS4HWPointers{}
 	hwPointersData := workingData[hwPointersOffset : hwPointersOffset+128]
-	if err := binstruct.UnmarshalBE(hwPointersData, hwPointers); err != nil {
+	if err := hwPointers.Unmarshal(hwPointersData); err != nil {
 		return merry.Wrap(err)
 	}
 
@@ -579,7 +539,7 @@ func (r *Replacer) updateHWPointers(workingData []byte, relocMap map[uint32]*rel
 			// Recalculate pointer CRC
 			ptrBytes := make([]byte, 4)
 			binary.BigEndian.PutUint32(ptrBytes, ptr.Ptr)
-			ptr.CRC = uint32(crcCalc.CalculateHardwareCRC(ptrBytes))
+			ptr.CRC = crcCalc.CalculateHardwareCRC(ptrBytes)
 			updated = true
 		}
 	}
@@ -619,27 +579,15 @@ func (r *Replacer) findMagicPattern(data []byte) (uint32, error) {
 
 // writeHWPointers writes HW pointers structure back to binary
 func (r *Replacer) writeHWPointers(data []byte, hw *types.FS4HWPointers) {
-	writePointer := func(offset int, ptr *types.HWPointerEntry) {
-		binary.BigEndian.PutUint32(data[offset:], ptr.Ptr)
-		binary.BigEndian.PutUint32(data[offset+4:], ptr.CRC)
+	// Marshal using annotation-based marshaling
+	marshaledData, err := hw.Marshal()
+	if err != nil {
+		r.logger.Error("Failed to marshal HW pointers", zap.Error(err))
+		return
 	}
-
-	writePointer(0, &hw.BootRecordPtr)
-	writePointer(8, &hw.Boot2Ptr)
-	writePointer(16, &hw.TOCPtr)
-	writePointer(24, &hw.ToolsPtr)
-	writePointer(32, &hw.AuthenticationStartPtr)
-	writePointer(40, &hw.AuthenticationEndPtr)
-	writePointer(48, &hw.DigestPtr)
-	writePointer(56, &hw.DigestRecoveryKeyPtr)
-	writePointer(64, &hw.FWWindowStartPtr)
-	writePointer(72, &hw.FWWindowEndPtr)
-	writePointer(80, &hw.ImageInfoSectionPtr)
-	writePointer(88, &hw.ImageSignaturePtr)
-	writePointer(96, &hw.PublicKeyPtr)
-	writePointer(104, &hw.FWSecurityVersionPtr)
-	writePointer(112, &hw.GCMIVDeltaPtr)
-	writePointer(120, &hw.HashesTablePtr)
+	
+	// Copy marshaled data
+	copy(data, marshaledData)
 }
 
 // updateSectionCRC updates the CRC for a section

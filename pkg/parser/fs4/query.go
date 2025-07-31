@@ -1,11 +1,11 @@
 package fs4
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
 
-	"github.com/ghostiam/binstruct"
 	"go.uber.org/zap"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
@@ -18,25 +18,39 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 		Format:        p.GetFormat().String(),
 		FormatVersion: 4,
 		ImageSize:     uint64(p.reader.Size()),
-		BaseGUIDNum:   8,  // Standard for most cards
-		BaseMACNum:    8,  // Standard for most cards
+		BaseGUIDNum:   0,  // Will be set from DEV_INFO or MFG_INFO
+		BaseMACNum:    0,  // Will be set from DEV_INFO or MFG_INFO
 	}
 
 	// Get IMAGE_INFO section if available
 	imageInfoSections := p.legacySections[types.SectionTypeImageInfo]
+	p.logger.Debug("Looking for IMAGE_INFO sections", 
+		zap.Int("count", len(imageInfoSections)),
+		zap.Uint32("type", uint32(types.SectionTypeImageInfo)))
 	if len(imageInfoSections) > 0 {
 		section := imageInfoSections[0]
 		p.logger.Debug("Found IMAGE_INFO section", 
 			zap.Uint64("offset", section.Offset),
-			zap.Uint32("size", section.Size))
+			zap.Uint32("size", section.Size),
+			zap.String("crc_type", section.CRCType.String()))
 		
 		if section.Data == nil {
 			// Read the section data if not already loaded
-			data, err := p.reader.ReadSection(int64(section.Offset), section.Size)
+			// For sections with IN_SECTION CRC, read the extra 4 bytes to get the CRC
+			readSize := section.Size
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() {
+				readSize += 4
+			}
+			data, err := p.reader.ReadSection(int64(section.Offset), readSize)
 			if err != nil {
 				p.logger.Warn("Failed to read IMAGE_INFO section", zap.Error(err))
 			} else {
-				section.Data = data
+				// For sections with IN_SECTION CRC, pass data without the CRC bytes to parsing
+				parseData := data
+				if section.CRCType == types.CRCInSection && !p.IsEncrypted() && len(data) >= 4 {
+					parseData = data[:len(data)-4]
+				}
+				section.Data = parseData
 			}
 		}
 
@@ -46,45 +60,101 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 				zap.Uint32("size", section.Size),
 				zap.Int("data_len", len(section.Data)))
 			
-			// Try parsing with the working ImageInfoBinary format first
-			var imageInfoBinary types.ImageInfoBinary
-			err := binstruct.UnmarshalBE(section.Data, &imageInfoBinary)
+			// Debug: Log first 64 bytes of data
+			if len(section.Data) >= 64 {
+				p.logger.Debug("IMAGE_INFO first 64 bytes",
+					zap.String("hex", fmt.Sprintf("%x", section.Data[:64])))
+			}
+			
+			// Debug: Log specific FW version fields at offsets 4, 8, 10
+			if len(section.Data) >= 12 {
+				p.logger.Debug("IMAGE_INFO FW version raw bytes",
+					zap.String("major_at_4", fmt.Sprintf("%02x %02x", section.Data[4], section.Data[5])),
+					zap.String("subminor_at_8", fmt.Sprintf("%02x %02x", section.Data[8], section.Data[9])),
+					zap.String("minor_at_10", fmt.Sprintf("%02x %02x", section.Data[10], section.Data[11])))
+			}
+			
+			// Check if data is all 0xFF
+			allFF := true
+			for i := 0; i < len(section.Data) && i < 1024; i++ {
+				if section.Data[i] != 0xFF {
+					allFF = false
+					break
+				}
+			}
+			if allFF {
+				p.logger.Warn("IMAGE_INFO section contains all 0xFF bytes!")
+			}
+			
+			// Try parsing with the ImageInfo format
+			var imageInfo types.ImageInfo
+			err := imageInfo.Unmarshal(section.Data)
 			if err != nil {
 				p.logger.Warn("Failed to parse IMAGE_INFO", zap.Error(err))
 			} else {
-				info.FWVersion = imageInfoBinary.GetFWVersionString()
-				info.FWReleaseDate = imageInfoBinary.GetFWReleaseDateString()
+				info.FWVersion = imageInfo.GetFWVersionString()
+				info.FWReleaseDate = imageInfo.GetFWReleaseDateString()
 				// MIC version is fixed at 2.0.0 for FS4 format
 				info.MICVersion = "2.0.0"
-				info.PRSName = imageInfoBinary.GetPRSNameString()
-				info.PartNumber = imageInfoBinary.GetPartNumberString()
-				info.Description = imageInfoBinary.GetDescriptionString()
-				info.PSID = imageInfoBinary.GetPSIDString()
+				info.PRSName = imageInfo.GetPRSNameString()
+				info.PartNumber = imageInfo.GetPartNumberString()
+				info.Description = imageInfo.GetDescriptionString()
+				info.PSID = imageInfo.GetPSIDString()
 				
-				// Try to extract security attributes from the first 4 bytes
-				if len(section.Data) >= 4 {
-					securityAndVersion := binary.BigEndian.Uint32(section.Data[0:4])
-					attrs := p.parseSecurityAttributes(securityAndVersion)
-					if attrs != "" {
-						info.SecurityAttrs = attrs
-					}
+				// Get security attributes using the parsed fields
+				attrs := p.parseSecurityAttributesFromImageInfo(&imageInfo)
+				if attrs != "" {
+					info.SecurityAttrs = attrs
 				}
 				
-				// Build product version from fw version
-				if info.FWVersion != "" {
-					// Convert version format: "16.35.4030" -> "rel-16_35_4030"
-					parts := strings.Split(info.FWVersion, ".")
-					if len(parts) == 3 {
-						info.ProductVersion = fmt.Sprintf("rel-%s_%s_%s", parts[0], parts[1], parts[2])
-					}
+				// Get product version from IMAGE_INFO
+				productVer := imageInfo.GetProductVerString()
+				if productVer != "" {
+					info.ProductVersion = productVer
 				}
 			}
 		}
 	}
+	
+	// Get security attributes from IMAGE_SIGNATURE sections
+	sigAttrs := p.getSignatureSecurityAttributes()
+	if sigAttrs != "" && info.SecurityAttrs != "" && info.SecurityAttrs != "N/A" {
+		// Merge with existing attributes
+		existingAttrs := strings.Split(info.SecurityAttrs, ", ")
+		sigAttrsList := strings.Split(sigAttrs, ", ")
+		
+		// Create a map to avoid duplicates
+		attrMap := make(map[string]bool)
+		for _, attr := range existingAttrs {
+			attrMap[attr] = true
+		}
+		for _, attr := range sigAttrsList {
+			attrMap[attr] = true
+		}
+		
+		// Build combined list
+		var combinedAttrs []string
+		// Order matters: secure-fw, signed-fw, debug, dev
+		if attrMap["secure-fw"] {
+			combinedAttrs = append(combinedAttrs, "secure-fw")
+		} else if attrMap["signed-fw"] {
+			combinedAttrs = append(combinedAttrs, "signed-fw")
+		}
+		if attrMap["debug"] {
+			combinedAttrs = append(combinedAttrs, "debug")
+		}
+		if attrMap["dev"] {
+			combinedAttrs = append(combinedAttrs, "dev")
+		}
+		
+		if len(combinedAttrs) > 0 {
+			info.SecurityAttrs = strings.Join(combinedAttrs, ", ")
+		}
+	}
 
-	// Get GUIDs/MACs info from DEV_INFO section (0xe1 in DTOC becomes 0xe0e1)
+	// Get GUIDs/MACs info from DEV_INFO section (0xe1 in DTOC)
 	// Based on mstflint's fs3_ops.cpp:301 Fs3Operations::GetImageInfo
-	devInfoType := uint16(types.SectionTypeDevInfo | 0xE000)
+	devInfoType := uint16(types.SectionTypeDevInfo)
 	devInfoSections := p.legacySections[devInfoType]
 	p.logger.Debug("Looking for DEV_INFO sections", 
 		zap.Int("count", len(devInfoSections)),
@@ -98,11 +168,21 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 		
 		if section.Data == nil {
 			// Read the section data if not already loaded
-			data, err := p.reader.ReadSection(int64(section.Offset), section.Size)
+			// For sections with IN_SECTION CRC, read the extra 4 bytes to get the CRC
+			readSize := section.Size
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() {
+				readSize += 4
+			}
+			data, err := p.reader.ReadSection(int64(section.Offset), readSize)
 			if err != nil {
 				p.logger.Warn("Failed to read DEV_INFO section", zap.Error(err))
 			} else {
-				section.Data = data
+				// For sections with IN_SECTION CRC, pass data without the CRC bytes to parsing
+				parseData := data
+				if section.CRCType == types.CRCInSection && !p.IsEncrypted() && len(data) >= 4 {
+					parseData = data[:len(data)-4]
+				}
+				section.Data = parseData
 			}
 		}
 
@@ -110,7 +190,7 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 			// Parse DEV_INFO structure
 			// Note: DEV_INFO uses little-endian encoding
 			var devInfo types.DevInfo
-			err := binstruct.UnmarshalLE(section.Data, &devInfo)
+			err := devInfo.Unmarshal(section.Data)
 			if err != nil {
 				p.logger.Warn("Failed to parse DEV_INFO", zap.Error(err))
 			} else {
@@ -134,21 +214,40 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 
 	// Parse ROM_CODE section for ROM info
 	romCodeSections := p.legacySections[types.SectionTypeROMCode]
+	p.logger.Debug("Looking for ROM_CODE sections", 
+		zap.Int("count", len(romCodeSections)))
 	if len(romCodeSections) > 0 {
 		section := romCodeSections[0]
+		p.logger.Debug("Found ROM_CODE section", 
+			zap.Uint64("offset", section.Offset),
+			zap.Uint32("size", section.Size))
 		if section.Data == nil {
 			// Read the section data if not already loaded
-			data, err := p.reader.ReadSection(int64(section.Offset), section.Size)
+			// For sections with IN_SECTION CRC, read the extra 4 bytes to get the CRC
+			readSize := section.Size
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() {
+				readSize += 4
+			}
+			data, err := p.reader.ReadSection(int64(section.Offset), readSize)
 			if err != nil {
 				p.logger.Warn("Failed to read ROM_CODE section", zap.Error(err))
 			} else {
-				section.Data = data
+				// For sections with IN_SECTION CRC, pass data without the CRC bytes to parsing
+				parseData := data
+				if section.CRCType == types.CRCInSection && !p.IsEncrypted() && len(data) >= 4 {
+					parseData = data[:len(data)-4]
+				}
+				section.Data = parseData
 			}
 		}
 
 		if section.Data != nil {
 			// Parse ROM info from ROM_CODE section
+			p.logger.Debug("Parsing ROM info", 
+				zap.Int("data_len", len(section.Data)))
 			romInfo := p.parseRomInfo(section.Data)
+			p.logger.Debug("Parsed ROM info entries", 
+				zap.Int("count", len(romInfo)))
 			if len(romInfo) > 0 {
 				info.RomInfo = romInfo
 			}
@@ -158,8 +257,8 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	// If DEV_INFO UIDs are empty, try to get them from MFG_INFO
 	// This is the case for ConnectX7 firmware where DEV_INFO is all FFs
 	if info.BaseGUID == 0 && info.BaseMAC == 0 {
-		// MFG_INFO is type 0xe0 in DTOC (becomes 0xe0e0)
-		mfgInfoType := uint16(0xe0 | 0xE000)
+		// MFG_INFO is type 0xe0 in DTOC
+		mfgInfoType := uint16(types.SectionTypeMfgInfo)
 		mfgInfoSections := p.legacySections[mfgInfoType]
 		p.logger.Debug("Looking for MFG_INFO sections", 
 			zap.Int("count", len(mfgInfoSections)),
@@ -173,11 +272,21 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 			
 			if section.Data == nil {
 				// Read the section data if not already loaded
-				data, err := p.reader.ReadSection(int64(section.Offset), section.Size)
+				// For sections with IN_SECTION CRC, read the extra 4 bytes to get the CRC
+				readSize := section.Size
+				if section.CRCType == types.CRCInSection && !p.IsEncrypted() {
+					readSize += 4
+				}
+				data, err := p.reader.ReadSection(int64(section.Offset), readSize)
 				if err != nil {
 					p.logger.Warn("Failed to read MFG_INFO section", zap.Error(err))
 				} else {
-					section.Data = data
+					// For sections with IN_SECTION CRC, pass data without the CRC bytes to parsing
+					parseData := data
+					if section.CRCType == types.CRCInSection && !p.IsEncrypted() && len(data) >= 4 {
+						parseData = data[:len(data)-4]
+					}
+					section.Data = parseData
 				}
 			}
 
@@ -185,7 +294,7 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 				// Parse MFG_INFO structure
 				// Note: MFG_INFO uses little-endian encoding like DEV_INFO
 				var mfgInfo types.MfgInfo
-				err := binstruct.UnmarshalLE(section.Data, &mfgInfo)
+				err := mfgInfo.Unmarshal(section.Data)
 				if err != nil {
 					p.logger.Warn("Failed to parse MFG_INFO", zap.Error(err))
 				} else {
@@ -207,6 +316,25 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 
 	// Check if firmware is encrypted
 	info.IsEncrypted = p.itocHeader == nil || p.itocHeader.Signature0 != types.ITOCSignature
+	
+	// Determine if we should use dual GUID/MAC format
+	// This is used for certain encrypted firmwares (like CX7) that don't have DEV_INFO sections
+	// The check is: encrypted AND no DEV_INFO sections found
+	devInfoCount := 0
+	for _, sections := range p.sections {
+		for _, section := range sections {
+			if section.Type() == types.SectionTypeDevInfo {
+				devInfoCount++
+			}
+		}
+	}
+	
+	if info.IsEncrypted && devInfoCount == 0 {
+		info.UseDualFormat = true
+		// For encrypted firmware without GUID/MAC data, all values are N/A
+		info.GUIDStep = 0
+		info.MACStep = 0
+	}
 
 	// Get chunk size from HW pointers if available
 	if p.hwPointers != nil {
@@ -233,27 +361,28 @@ func (p *Parser) Query() (*interfaces.FirmwareInfo, error) {
 	return info, nil
 }
 
-// parseSecurityAttributes parses security attributes from the first dword of IMAGE_INFO
-func (p *Parser) parseSecurityAttributes(securityAndVersion uint32) string {
-	// Extract security flags from bits
-	mccEn := (securityAndVersion & (1 << 8)) != 0
-	debugFW := (securityAndVersion & (1 << 13)) != 0
-	signedFW := (securityAndVersion & (1 << 14)) != 0
-	secureFW := (securityAndVersion & (1 << 15)) != 0
-	
-	// Build security mode
+// parseSecurityAttributesFromImageInfo parses security attributes from parsed IMAGE_INFO
+func (p *Parser) parseSecurityAttributesFromImageInfo(imageInfo *types.ImageInfo) string {
+	// Build security mode from parsed fields
 	var mode uint32
-	if mccEn {
+	if imageInfo.IsMCCEnabled() {
 		mode |= types.SMMFlags.MCC_EN
 	}
-	if debugFW {
+	if imageInfo.IsDebugFW() {
 		mode |= types.SMMFlags.DEBUG_FW
 	}
-	if signedFW {
+	if imageInfo.IsSignedFW() {
 		mode |= types.SMMFlags.SIGNED_FW
 	}
-	if secureFW {
+	if imageInfo.IsSecureFW() {
 		mode |= types.SMMFlags.SECURE_FW
+	}
+	
+	// Check IMAGE_SIGNATURE sections for dev_fw flag
+	// Based on mstflint's Fs3Operations::GetImgSigInfo
+	devFw := p.checkDevFwFromSignature()
+	if devFw {
+		mode |= types.SMMFlags.DEV_FW
 	}
 	
 	// Build attribute string
@@ -271,6 +400,10 @@ func (p *Parser) parseSecurityAttributes(securityAndVersion uint32) string {
 		attrs = append(attrs, "debug")
 	}
 	
+	if mode&types.SMMFlags.DEV_FW != 0 {
+		attrs = append(attrs, "dev")
+	}
+	
 	return strings.Join(attrs, ", ")
 }
 
@@ -283,6 +416,10 @@ func (p *Parser) parseRomInfo(data []byte) []interfaces.RomInfo {
 	// Reference: fw_ops.cpp:1896-1904
 	magicString := "mlxsign:"
 	magicLen := len(magicString)
+	
+	p.logger.Debug("Searching for ROM signatures", 
+		zap.String("magic", magicString),
+		zap.Int("data_len", len(data)))
 	
 	// Search for magic string in ROM data
 	// Reference: fw_ops.cpp:1928-1942
@@ -301,10 +438,16 @@ func (p *Parser) parseRomInfo(data []byte) []interfaces.RomInfo {
 		}
 		
 		if found {
+			p.logger.Debug("Found ROM signature", 
+				zap.Int("offset", i))
 			// Parse ROM info after mlxsign:
 			// Reference: fw_ops.cpp:1960-1961 - calls GetExpRomVerForOneRom
 			verOffset := i + magicLen
 			if romInfo := p.parseOneRomInfo(data, verOffset); romInfo != nil {
+				p.logger.Debug("Parsed ROM entry", 
+					zap.String("type", romInfo.Type),
+					zap.String("version", romInfo.Version),
+					zap.String("cpu", romInfo.CPU))
 				romInfoList = append(romInfoList, *romInfo)
 			}
 			
@@ -314,6 +457,9 @@ func (p *Parser) parseRomInfo(data []byte) []interfaces.RomInfo {
 			i += 11
 		}
 	}
+	
+	p.logger.Debug("Finished parsing ROM info", 
+		zap.Int("entries_found", len(romInfoList)))
 	
 	return romInfoList
 }
@@ -332,6 +478,9 @@ func (p *Parser) parseOneRomInfo(data []byte, verOffset int) *interfaces.RomInfo
 	offs8 := binary.LittleEndian.Uint32(data[verOffset+8:])
 	
 	productID := uint16(tmp >> 16)
+	p.logger.Debug("ROM product ID", 
+		zap.Uint16("product_id", productID),
+		zap.String("hex", fmt.Sprintf("0x%x", productID)))
 	
 	// Parse ROM type from product ID
 	// Reference: fw_ops.cpp:2357 - expRomType2Str
@@ -345,6 +494,10 @@ func (p *Parser) parseOneRomInfo(data []byte, verOffset int) *interfaces.RomInfo
 		romType = "CLP"
 	case 0x13:
 		romType = "NVMe"
+	case 0x14:
+		romType = "UEFI Virtio net"
+	case 0x15:
+		romType = "UEFI Virtio blk"
 	case 0xf:
 		romType = "CLP"
 	default:
@@ -403,4 +556,99 @@ func (p *Parser) parseOneRomInfo(data []byte, verOffset int) *interfaces.RomInfo
 		Version: version,
 		CPU:     cpu,
 	}
+}
+
+// checkDevFwFromSignature checks IMAGE_SIGNATURE sections for dev_fw flag
+// Based on mstflint's Fs3Operations::GetImgSigInfo
+func (p *Parser) checkDevFwFromSignature() bool {
+	// Check IMAGE_SIGNATURE_256 sections
+	sig256Sections := p.legacySections[types.SectionTypeImageSignature256]
+	for _, section := range sig256Sections {
+		if section.Data == nil {
+			// Read the section data if not already loaded
+			// For sections with IN_SECTION CRC, read the extra 4 bytes to get the CRC
+			readSize := section.Size
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() {
+				readSize += 4
+			}
+			data, err := p.reader.ReadSection(int64(section.Offset), readSize)
+			if err != nil {
+				p.logger.Warn("Failed to read IMAGE_SIGNATURE_256 section", zap.Error(err))
+				continue
+			}
+			// For sections with IN_SECTION CRC, pass data without the CRC bytes to parsing
+			parseData := data
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() && len(data) >= 4 {
+				parseData = data[:len(data)-4]
+			}
+			section.Data = parseData
+		}
+		
+		if section.Data != nil && len(section.Data) >= 0x20 { // Need at least 32 bytes for keypair_uuid
+			// Parse the signature structure
+			var sig types.FS4ImageSignatureStruct
+			if err := binary.Read(bytes.NewReader(section.Data), binary.BigEndian, &sig); err != nil {
+				p.logger.Warn("Failed to parse IMAGE_SIGNATURE_256", zap.Error(err))
+				continue
+			}
+			
+			// Check keypair_uuid condition from mstflint
+			// if (((keypair_uuid[0] != 0) || (keypair_uuid[1] != 0) || (keypair_uuid[2] != 0)) && 
+			//     (keypair_uuid[3] == 0) && ((EXTRACT(keypair_uuid[2], 0, 16)) == 0))
+			if (sig.KeypairUUID[0] != 0 || sig.KeypairUUID[1] != 0 || sig.KeypairUUID[2] != 0) &&
+			   sig.KeypairUUID[3] == 0 && (sig.KeypairUUID[2] & 0xFFFF) == 0 {
+				return true
+			}
+		}
+	}
+	
+	// Check IMAGE_SIGNATURE_512 sections
+	sig512Sections := p.legacySections[types.SectionTypeImageSignature512]
+	for _, section := range sig512Sections {
+		if section.Data == nil {
+			// Read the section data if not already loaded
+			// For sections with IN_SECTION CRC, read the extra 4 bytes to get the CRC
+			readSize := section.Size
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() {
+				readSize += 4
+			}
+			data, err := p.reader.ReadSection(int64(section.Offset), readSize)
+			if err != nil {
+				p.logger.Warn("Failed to read IMAGE_SIGNATURE_512 section", zap.Error(err))
+				continue
+			}
+			// For sections with IN_SECTION CRC, pass data without the CRC bytes to parsing
+			parseData := data
+			if section.CRCType == types.CRCInSection && !p.IsEncrypted() && len(data) >= 4 {
+				parseData = data[:len(data)-4]
+			}
+			section.Data = parseData
+		}
+		
+		if section.Data != nil && len(section.Data) >= 0x20 { // Need at least 32 bytes for keypair_uuid
+			// Parse the signature structure
+			var sig types.FS4ImageSignature2Struct
+			if err := binary.Read(bytes.NewReader(section.Data), binary.BigEndian, &sig); err != nil {
+				p.logger.Warn("Failed to parse IMAGE_SIGNATURE_512", zap.Error(err))
+				continue
+			}
+			
+			// Check keypair_uuid condition from mstflint
+			if (sig.KeypairUUID[0] != 0 || sig.KeypairUUID[1] != 0 || sig.KeypairUUID[2] != 0) &&
+			   sig.KeypairUUID[3] == 0 && (sig.KeypairUUID[2] & 0xFFFF) == 0 {
+				return true
+			}
+		}
+	}
+	
+	return false
+}
+
+// getSignatureSecurityAttributes gets security attributes from IMAGE_SIGNATURE sections
+func (p *Parser) getSignatureSecurityAttributes() string {
+	devFw := p.checkDevFwFromSignature()
+	if devFw {
+		return "dev"
+	}
+	return ""
 }

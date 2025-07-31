@@ -3,8 +3,6 @@ package types
 import (
 	"encoding/hex"
 	"testing"
-
-	"github.com/ghostiam/binstruct"
 )
 
 func TestFS4HWPointers(t *testing.T) {
@@ -33,11 +31,15 @@ func TestFS4HWPointers(t *testing.T) {
 		t.Fatalf("Failed to decode hex string: %v", err)
 	}
 
-	hwPointers := &FS4HWPointers{}
-	err = binstruct.UnmarshalBE(data[:128], hwPointers)
+	// Use annotated version for testing
+	hwPointersAnnotated := &FS4HWPointersAnnotated{}
+	err = hwPointersAnnotated.Unmarshal(data[:128])
 	if err != nil {
 		t.Fatalf("Failed to unmarshal HW pointers: %v", err)
 	}
+	
+	// Convert to legacy format for comparison
+	hwPointers := hwPointersAnnotated.FromAnnotated()
 
 	// Test boot record pointer
 	if hwPointers.BootRecordPtr.Ptr != 0 {
@@ -81,11 +83,15 @@ func TestITOCHeader(t *testing.T) {
 		t.Fatalf("Failed to decode hex string: %v", err)
 	}
 
-	header := &ITOCHeader{}
-	err = binstruct.UnmarshalBE(data, header)
+	// Use annotated version for testing
+	headerAnnotated := &ITOCHeaderAnnotated{}
+	err = headerAnnotated.Unmarshal(data)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal ITOC header: %v", err)
 	}
+	
+	// Convert to legacy format for comparison
+	header := headerAnnotated.FromAnnotated()
 
 	// Test signature
 	if header.Signature0 != ITOCSignature {
@@ -144,9 +150,15 @@ func TestITOCEntry_ParseFields(t *testing.T) {
 				t.Fatalf("Failed to decode hex string: %v", err)
 			}
 
-			entry := &ITOCEntry{}
-			copy(entry.Data[:], data)
-			entry.ParseFields()
+			// Use annotated version for testing
+			entryAnnotated := &ITOCEntryAnnotated{}
+			err = entryAnnotated.Unmarshal(data)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal ITOCEntry: %v", err)
+			}
+			
+			// Convert to legacy format for comparison
+			entry := entryAnnotated.FromAnnotated()
 
 			if entry.Type != tt.expectedType {
 				t.Errorf("ITOCEntry.Type = 0x%x, want 0x%x", entry.Type, tt.expectedType)

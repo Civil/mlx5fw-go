@@ -14,6 +14,9 @@ for c_f in ${list}; do
 	grep -F -q "*" <<< ${c_f} && continue
 	unset mlx5fw_go_parsed
 	declare -A mlx5fw_go_parsed
+
+	unset mlx5fw_go_crc
+	declare -A mlx5fw_go_crc
 	f="${c_f}"
 	if [[ ${c_f} == *.xz ]]; then
 		xz -kd "${c_f}"
@@ -42,12 +45,17 @@ for c_f in ${list}; do
 	for l in ${mlx5fw_go_out}; do
 		IFS="${OLD_IFS}"
 		set -- ${l}
+		if [[ "${1}" == "-I-" ]]; then
+			continue
+		fi
 		addr=$(echo "${1}" | cut -d'/' -f 2 | cut -d'-' -f 1)
 		name=$(echo "${3}" | cut -d'(' -f 2 | cut -d')' -f 1)
+		crc_state="${5} ${6}"
 		# addr="${2}"
 		# name="${1}"
 		addrs="${mlx5fw_go_parsed[${name}]}"
 		mlx5fw_go_parsed[${name}]="${addrs} ${addr}"
+		mlx5fw_go_crc["${addr}"]="${crc_state}"
 	done
 	IFS="${OLD_IFS}"
 
@@ -60,7 +68,9 @@ for c_f in ${list}; do
 		set -- ${l}
 		addr=$(echo "${1}" | cut -d'/' -f 2 | cut -d'-' -f 1)
 		name=$(echo "${3}" | cut -d'(' -f 2 | cut -d')' -f 1)
+		crc_state="${5} ${6}"
 		mlx5fw_go_addrs="${mlx5fw_go_parsed[${name}]}"
+		mlx5fw_go_crc_state="${mlx5fw_go_crc["${addr}"]}"
 		total=$((total+1))
 		if [[ -z "${mlx5fw_go_addrs}" ]]; then
 			failed=$((failed+1))
@@ -77,6 +87,22 @@ for c_f in ${list}; do
 			[[ ${verbose} == 1 ]] && echo "  ERROR(${f}: mlx5fw-go output for section ${name} have a wrong address/adresses. got '${mlx5fw_go_parsed[${name}]}', expected '${addr}'"
 		else
 			[[ ${verbose} == 1 ]] && echo "  OK(${f}): Address for section '${name}' present"
+		fi
+
+		total=$((total+1))
+		if [[ -z "${mlx5fw_go_crc_state}" ]]; then
+			failed=$((failed+1))
+			[[ ${verbose} == 1 ]] && echo "  ERROR(${f}): mlx5fw-go output doesn't have section at address '${addr}'" ||:
+			continue
+		else
+			[[ ${verbose} == 1 ]] && echo "  OK(${f}): section with '${addr}' is present"
+		fi
+
+		if [[ "${mlx5fw_go_crc_state}" != "${crc_state}" ]]; then
+			failed=$((failed+1))
+			[[ ${verbose} == 1 ]] && echo "  ERROR(${f}): mlx5fw-go crc state doesn't match for section '${name}' at address '${addr}'" ||:
+		else
+			[[ ${verbose} == 1 ]] && echo "  OK(${f}): section '${name}' have same CRC state"
 		fi
 	done
 	IFS="${OLD_IFS}"

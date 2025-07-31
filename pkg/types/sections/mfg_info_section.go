@@ -2,12 +2,10 @@ package sections
 
 import (
 	"encoding/json"
-	"strings"
 	
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
-	"github.com/ghostiam/binstruct"
 )
 
 // MFGInfoSection represents a Manufacturing Info section
@@ -29,7 +27,7 @@ func (s *MFGInfoSection) Parse(data []byte) error {
 	
 	s.Info = &types.MFGInfo{}
 	
-	if err := binstruct.UnmarshalBE(data, s.Info); err != nil {
+	if err := s.Info.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
 	
@@ -42,22 +40,17 @@ func (s *MFGInfoSection) MarshalJSON() ([]byte, error) {
 		return s.BaseSection.MarshalJSON()
 	}
 	
-	// Clean null-terminated strings
-	psid := strings.TrimRight(string(s.Info.PSID[:]), "\x00")
-	partNumber := strings.TrimRight(string(s.Info.PartNumber[:]), "\x00")
-	revision := strings.TrimRight(string(s.Info.Revision[:]), "\x00")
-	productName := strings.TrimRight(string(s.Info.ProductName[:]), "\x00")
-	
 	return json.Marshal(map[string]interface{}{
 		"type":         s.Type(),
 		"type_name":    s.TypeName(),
 		"offset":       s.Offset(),
 		"size":         s.Size(),
 		"mfg_info": map[string]interface{}{
-			"psid": psid,
-			"part_number": partNumber,
-			"revision": revision,
-			"product_name": productName,
+			"psid": s.Info.PSID,
+			"part_number": s.Info.PartNumber,
+			"revision": s.Info.Revision,
+			"product_name": s.Info.ProductName,
+			"reserved": s.Info.Reserved,
 		},
 	})
 }

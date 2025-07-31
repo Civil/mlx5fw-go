@@ -47,10 +47,9 @@ func (s *DTOCSection) Parse(data []byte) error {
 	offset := 32
 	for offset+32 <= len(data) {
 		entry := &types.ITOCEntry{}
-		copy(entry.Data[:], data[offset:offset+32])
-		
-		// Parse entry fields
-		entry.ParseFields()
+		if err := entry.Unmarshal(data[offset:offset+32]); err != nil {
+			return err
+		}
 		
 		// Check for end marker
 		if entry.Type == types.SectionTypeEnd {
@@ -110,9 +109,9 @@ func (s *DTOCSection) MarshalJSON() ([]byte, error) {
 		entries[i] = map[string]interface{}{
 			"type":        entry.Type,
 			"type_name":   types.GetSectionTypeName(uint16(entry.Type)),
-			"size":        entry.Size,
-			"flash_addr":  entry.FlashAddr,
-			"crc":         entry.CRC,
+			"size":        entry.GetSize(),
+			"flash_addr":  entry.GetFlashAddr(),
+			"crc":         entry.GetCRC(),
 			"no_crc":      entry.GetNoCRC(),
 			"encrypted":   entry.Encrypted,
 		}

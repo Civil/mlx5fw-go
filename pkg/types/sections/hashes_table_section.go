@@ -16,6 +16,7 @@ type HashesTableSection struct {
 	*interfaces.BaseSection
 	Header  *types.HashesTableHeader
 	Entries []*types.HashTableEntry
+	ReservedTail []byte  // Reserved data at the end of the section after entries
 }
 
 // NewHashesTableSection creates a new Hashes Table section
@@ -41,8 +42,8 @@ func (s *HashesTableSection) Parse(data []byte) error {
 	}
 	
 	// Parse entries if header indicates there are any
+	offset := 32 // After header
 	if s.Header.NumEntries > 0 && s.Header.NumEntries < 1000 { // Sanity check
-		offset := 32 // After header
 		entrySize := 64 // Typical entry size (32-byte hash + metadata)
 		
 		for i := uint32(0); i < s.Header.NumEntries && offset+entrySize <= len(data); i++ {
@@ -61,6 +62,11 @@ func (s *HashesTableSection) Parse(data []byte) error {
 			s.Entries = append(s.Entries, entry)
 			offset += entrySize
 		}
+	}
+	
+	// Store any remaining data after entries (or all data after header if no entries)
+	if offset < len(data) {
+		s.ReservedTail = data[offset:]
 	}
 	
 	return nil
@@ -91,14 +97,23 @@ func (s *HashesTableSection) MarshalJSON() ([]byte, error) {
 		result["header"] = map[string]interface{}{
 			"magic":       s.Header.Magic,
 			"version":     s.Header.Version,
+			"reserved1":   s.Header.Reserved1,
+			"reserved2":   s.Header.Reserved2,
 			"table_size":  s.Header.TableSize,
 			"num_entries": s.Header.NumEntries,
+			"reserved3":   s.Header.Reserved3,
 			"crc":         s.Header.CRC,
+			"reserved4":   s.Header.Reserved4,
 		}
 	}
 	
 	if len(entries) > 0 {
 		result["entries"] = entries
+	}
+	
+	// Include reserved tail data if present
+	if len(s.ReservedTail) > 0 {
+		result["reserved_tail"] = hex.EncodeToString(s.ReservedTail)
 	}
 	
 	return json.Marshal(result)

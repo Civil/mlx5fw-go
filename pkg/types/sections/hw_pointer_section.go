@@ -1,8 +1,6 @@
 package sections
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
@@ -37,18 +35,22 @@ func (s *HWPointerSection) Parse(data []byte) error {
 	// FS5 has larger pointer structure
 	if len(data) >= 0x100 { // FS5 size threshold
 		s.Format = types.FormatFS5
-		s.FS5Pointers = &types.FS5HWPointers{}
-		reader := bytes.NewReader(data)
-		if err := binary.Read(reader, binary.BigEndian, s.FS5Pointers); err != nil {
+		// Use annotated version for parsing
+		annotated := &types.FS5HWPointersAnnotated{}
+		if err := annotated.Unmarshal(data); err != nil {
 			return merry.Wrap(err)
 		}
+		// Use annotated format directly
+		s.FS5Pointers = annotated
 	} else {
 		s.Format = types.FormatFS4
-		s.FS4Pointers = &types.FS4HWPointers{}
-		reader := bytes.NewReader(data)
-		if err := binary.Read(reader, binary.BigEndian, s.FS4Pointers); err != nil {
+		// Use annotated version for parsing
+		annotated := &types.FS4HWPointersAnnotated{}
+		if err := annotated.Unmarshal(data); err != nil {
 			return merry.Wrap(err)
 		}
+		// Use annotated format directly
+		s.FS4Pointers = annotated
 	}
 	
 	return nil

@@ -44,7 +44,7 @@ func main() {
 				fmt.Printf("  Size: 0x%x\n", section.Size)
 				fmt.Printf("  CRCType: %v\n", section.CRCType)
 				if section.Entry != nil {
-					fmt.Printf("  Entry CRC field: %d\n", section.Entry.CRC)
+					fmt.Printf("  Entry CRC field: %d\n", section.Entry.GetCRC())
 					fmt.Printf("  Entry GetNoCRC(): %v\n", section.Entry.GetNoCRC())
 				}
 				fmt.Println()

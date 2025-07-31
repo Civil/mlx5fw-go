@@ -1,0 +1,3 @@
+DRY RUN - Conversion Summary
+================================
+[DRY RUN] additional_sections: 22 structs, false methods preserved

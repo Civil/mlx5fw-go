@@ -82,20 +82,64 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 		fmt.Println(strings.Join(romInfoStrs, "\n                       "))
 	}
 	
-	fmt.Printf("Description:           UID                GuidsNumber\n")
-	if info.BaseGUID != 0 {
-		fmt.Printf("Base GUID:             %016x        %d\n", info.BaseGUID, info.BaseGUIDNum)
+	// Display GUID/MAC information based on format
+	if info.UseDualFormat {
+		// Dual format for encrypted firmware (GUID1/GUID2, MAC1/MAC2)
+		fmt.Printf("Description:           UID                GuidsNumber  Step\n")
+		
+		// GUID1
+		if info.BaseGUID != 0 {
+			fmt.Printf("Base GUID1:            %016x        %d       %d\n", info.BaseGUID, info.BaseGUIDNum, info.GUIDStep)
+		} else {
+			fmt.Printf("Base GUID1:            N/A                    N/A       N/A\n")
+		}
+		
+		// GUID2
+		if info.BaseGUID2 != 0 {
+			fmt.Printf("Base GUID2:            %016x        %d       %d\n", info.BaseGUID2, info.BaseGUID2Num, info.GUIDStep)
+		} else {
+			fmt.Printf("Base GUID2:            N/A                    N/A       N/A\n")
+		}
+		
+		// MAC1
+		if info.BaseMAC != 0 {
+			fmt.Printf("Base MAC1:             %012x            %d       %d\n", info.BaseMAC, info.BaseMACNum, info.MACStep)
+		} else {
+			fmt.Printf("Base MAC1:             N/A                    N/A       N/A\n")
+		}
+		
+		// MAC2
+		if info.BaseMAC2 != 0 {
+			fmt.Printf("Base MAC2:             %012x            %d       %d\n", info.BaseMAC2, info.BaseMAC2Num, info.MACStep)
+		} else {
+			fmt.Printf("Base MAC2:             N/A                    N/A       N/A\n")
+		}
 	} else {
-		fmt.Printf("Base GUID:             N/A                     %d\n", info.BaseGUIDNum)
-	}
-	if info.BaseMAC != 0 {
-		fmt.Printf("Base MAC:              %012x            %d\n", info.BaseMAC, info.BaseMACNum)
-	} else {
-		fmt.Printf("Base MAC:              N/A                     %d\n", info.BaseMACNum)
+		// Single format (normal firmware)
+		fmt.Printf("Description:           UID                GuidsNumber\n")
+		if info.BaseGUID != 0 {
+			fmt.Printf("Base GUID:             %016x        %d\n", info.BaseGUID, info.BaseGUIDNum)
+		} else {
+			fmt.Printf("Base GUID:             N/A                     %d\n", info.BaseGUIDNum)
+		}
+		if info.BaseMAC != 0 {
+			fmt.Printf("Base MAC:              %012x            %d\n", info.BaseMAC, info.BaseMACNum)
+		} else {
+			fmt.Printf("Base MAC:              N/A                     %d\n", info.BaseMACNum)
+		}
 	}
 	fmt.Printf("Image VSD:             %s\n", FormatNA(info.ImageVSD))
 	fmt.Printf("Device VSD:            %s\n", FormatNA(info.DeviceVSD))
 	fmt.Printf("PSID:                  %s\n", info.PSID)
+	
+	// Show Orig PSID if it exists or if using dual format (encrypted firmware)
+	if info.OrigPSID != "" && info.OrigPSID != info.PSID {
+		fmt.Printf("Orig PSID:             %s\n", info.OrigPSID)
+	} else if info.UseDualFormat {
+		// For encrypted firmware, always show Orig PSID even if N/A
+		fmt.Printf("Orig PSID:             N/A\n")
+	}
+	
 	fmt.Printf("Security Attributes:   %s\n", FormatNA(info.SecurityAttrs))
 	fmt.Printf("Security Ver:          %d\n", info.SecurityVer)
 	

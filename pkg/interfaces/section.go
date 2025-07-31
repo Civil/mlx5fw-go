@@ -25,6 +25,9 @@ type SectionInterface interface {
 	// CRCType returns the CRC type for this section
 	CRCType() types.CRCType
 	
+	// HasCRC returns whether this section has CRC verification enabled
+	HasCRC() bool
+	
 	// CalculateCRC calculates the CRC for this section
 	CalculateCRC() (uint32, error)
 	
@@ -69,6 +72,7 @@ type BaseSection struct {
 	entry           *types.ITOCEntry
 	isFromHWPointer bool
 	crcHandler      SectionCRCHandler
+	hasCRC          bool // private field - not marshaled/unmarshaled
 }
 
 // Type returns the section type
@@ -94,6 +98,11 @@ func (b *BaseSection) Size() uint32 {
 // CRCType returns the CRC type for this section
 func (b *BaseSection) CRCType() types.CRCType {
 	return b.crcType
+}
+
+// HasCRC returns whether this section has CRC verification enabled
+func (b *BaseSection) HasCRC() bool {
+	return b.hasCRC
 }
 
 // IsEncrypted returns whether the section is encrypted
@@ -160,11 +169,12 @@ func (b *BaseSection) VerifyCRC() error {
 		if len(b.rawData) < 4 {
 			return fmt.Errorf("section too small for embedded CRC")
 		}
-		// Extract CRC from the last 4 bytes (big-endian)
-		expectedCRC = uint32(b.rawData[len(b.rawData)-4])<<24 |
-			uint32(b.rawData[len(b.rawData)-3])<<16 |
-			uint32(b.rawData[len(b.rawData)-2])<<8 |
-			uint32(b.rawData[len(b.rawData)-1])
+		// Extract CRC from the last 4 bytes
+		// For IN_SECTION CRCs, the format is:
+		// - 16-bit CRC in upper 16 bits (bytes 0-1) 
+		// - Lower 16 bits are 0 (bytes 2-3)
+		expectedCRC = uint32(b.rawData[len(b.rawData)-4])<<8 |
+			uint32(b.rawData[len(b.rawData)-3])
 		// Verify CRC on data without the CRC bytes
 		return b.crcHandler.VerifyCRC(b.rawData[:len(b.rawData)-4], expectedCRC, b.crcType)
 	} else {
@@ -203,6 +213,12 @@ func (b *BaseSection) MarshalJSON() ([]byte, error) {
 // NewBaseSection creates a new base section with the given parameters
 func NewBaseSection(sectionType uint16, offset uint64, size uint32, crcType types.CRCType, 
 	crc uint32, isEncrypted, isDeviceData bool, entry *types.ITOCEntry, isFromHWPointer bool) *BaseSection {
+	// Determine if section has CRC based on the entry's no_crc flag
+	hasCRC := true
+	if entry != nil && entry.GetNoCRC() {
+		hasCRC = false
+	}
+	
 	return &BaseSection{
 		sectionType:     sectionType,
 		offset:          offset,
@@ -213,6 +229,7 @@ func NewBaseSection(sectionType uint16, offset uint64, size uint32, crcType type
 		isDeviceData:    isDeviceData,
 		entry:           entry,
 		isFromHWPointer: isFromHWPointer,
+		hasCRC:          hasCRC,
 	}
 }
 

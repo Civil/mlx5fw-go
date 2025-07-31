@@ -16,6 +16,22 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionInterface) (string, 
 		return "OK", nil
 	}
 
+	// Check if section has CRC verification enabled
+	if !section.HasCRC() {
+		return "CRC IGNORED", nil
+	}
+	
+	// Debug: Log CRC info for IMAGE_SIGNATURE sections
+	if section.Type() == types.SectionTypeImageSignature256 || section.Type() == types.SectionTypeImageSignature512 {
+		if entry := section.GetITOCEntry(); entry != nil {
+			p.logger.Info("IMAGE_SIGNATURE section CRC info",
+				zap.String("type", section.TypeName()),
+				zap.Uint8("crc_field", entry.GetCRC()),
+				zap.Bool("no_crc", entry.GetNoCRC()),
+				zap.Bool("has_crc", section.HasCRC()))
+		}
+	}
+
 	// Get section's CRC type
 	crcType := section.CRCType()
 	

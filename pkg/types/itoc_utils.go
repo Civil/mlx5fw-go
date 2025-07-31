@@ -23,8 +23,9 @@ func CalculateNumSections(firmwareData []byte, itocOffset uint32) (int, error) {
 		
 		// Parse entry
 		entry := &ITOCEntry{}
-		copy(entry.Data[:], entryData)
-		entry.ParseFields()
+		if err := entry.Unmarshal(entryData); err != nil {
+			return 0, err
+		}
 		
 		// Check if this is a valid entry
 		// Invalid entries have type 0xFF or are empty (size and address are 0)
@@ -32,7 +33,7 @@ func CalculateNumSections(firmwareData []byte, itocOffset uint32) (int, error) {
 			break
 		}
 		
-		if entry.Size == 0 && entry.FlashAddr == 0 {
+		if entry.GetSize() == 0 && entry.GetFlashAddr() == 0 {
 			// Check if entire entry is zero (end marker)
 			allZero := true
 			for _, b := range entryData {

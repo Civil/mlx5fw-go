@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
-
-	"github.com/ghostiam/binstruct"
 )
 
 func TestFS4HWPointers_Unmarshal_Extended(t *testing.T) {
@@ -181,15 +179,19 @@ func TestFS4HWPointers_Unmarshal_Extended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hwp := &FS4HWPointers{}
-			err := binstruct.UnmarshalBE(tt.data, hwp)
+			// Use annotated version for testing
+			hwpAnnotated := &FS4HWPointersAnnotated{}
+			err := hwpAnnotated.Unmarshal(tt.data)
 			
 			if (err != nil) != tt.wantErr {
-				t.Errorf("UnmarshalBE() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			
 			if err == nil {
+				// Convert to legacy format for comparison
+				hwp := hwpAnnotated.FromAnnotated()
+				
 				if hwp.Boot2Ptr.Ptr != tt.wantBoot2 {
 					t.Errorf("Boot2Ptr.Ptr = 0x%X, want 0x%X", hwp.Boot2Ptr.Ptr, tt.wantBoot2)
 				}
@@ -257,11 +259,15 @@ func TestHWPointerEntry_Fields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hwptr := &HWPointerEntry{}
-			err := binstruct.UnmarshalBE(tt.data, hwptr)
+			// Use annotated version for testing
+			hwptrAnnotated := &HWPointerEntryAnnotated{}
+			err := hwptrAnnotated.Unmarshal(tt.data)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
+
+			// Convert to legacy format for comparison
+			hwptr := hwptrAnnotated.FromAnnotated()
 
 			if hwptr.Ptr != tt.wantPtr {
 				t.Errorf("Ptr = 0x%X, want 0x%X", hwptr.Ptr, tt.wantPtr)
@@ -354,12 +360,14 @@ func TestFS4HWPointers_Marshal_Extended(t *testing.T) {
 		t.Errorf("Marshaled size = %d, want 128", buf.Len())
 	}
 
-	// Unmarshal back and verify
-	var hwp2 FS4HWPointers
-	err = binstruct.UnmarshalBE(buf.Bytes(), &hwp2)
+	// Unmarshal back and verify using annotated version
+	hwp2Annotated := &FS4HWPointersAnnotated{}
+	err = hwp2Annotated.Unmarshal(buf.Bytes())
 	if err != nil {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
+	
+	hwp2 := hwp2Annotated.FromAnnotated()
 
 	if hwp2.Boot2Ptr.Ptr != hwp.Boot2Ptr.Ptr {
 		t.Errorf("Boot2Ptr.Ptr = 0x%X, want 0x%X", hwp2.Boot2Ptr.Ptr, hwp.Boot2Ptr.Ptr)
@@ -378,8 +386,8 @@ func BenchmarkFS4HWPointers_Unmarshal_Extended(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hwp := &FS4HWPointers{}
-		_ = binstruct.UnmarshalBE(data, hwp)
+		hwpAnnotated := &FS4HWPointersAnnotated{}
+		_ = hwpAnnotated.Unmarshal(data)
 	}
 }
 

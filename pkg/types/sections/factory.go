@@ -80,6 +80,65 @@ func (f *DefaultSectionFactory) CreateSection(sectionType uint16, offset uint64,
 	case types.SectionTypeHashesTable:
 		return NewHashesTableSection(base), nil
 		
+	case types.SectionTypeBoot2:
+		// BOOT2 has special structure
+		return NewBoot2Section(base), nil
+		
+	case types.SectionTypeToolsArea:
+		return NewToolsAreaExtendedSection(base), nil
+		
+	case types.SectionTypeImageSignature256:
+		return NewImageSignatureSection(base), nil
+		
+	case types.SectionTypeImageSignature512:
+		return NewImageSignature2Section(base), nil
+		
+	case types.SectionTypePublicKeys2048:
+		return NewPublicKeysSection(base), nil
+		
+	case types.SectionTypePublicKeys4096:
+		return NewPublicKeys2Section(base), nil
+		
+	case types.SectionTypeResetInfo:
+		return NewResetInfoSection(base), nil
+		
+	case types.SectionTypeForbiddenVersions:
+		return NewForbiddenVersionsSection(base), nil
+		
+	case types.SectionTypeDbgFWINI:
+		return NewDBGFwIniSection(base), nil
+		
+	case types.SectionTypeDbgFWParams:
+		return NewDBGFwParamsSection(base), nil
+		
+	case types.SectionTypeFWAdb:
+		return NewFWAdbSection(base), nil
+		
+	// DTOC sections
+	case types.SectionTypeVpdR0:
+		return NewVPD_R0Section(base), nil
+		
+	case types.SectionTypeFwNvLog:
+		return NewFWNVLogSection(base), nil
+		
+	case types.SectionTypeNvData0, types.SectionTypeNvData1, types.SectionTypeNvData2:
+		return NewNVDataSection(base), nil
+		
+	case types.SectionTypeCRDumpMaskData:
+		return NewCRDumpMaskDataSection(base), nil
+		
+	case types.SectionTypeFwInternalUsage:
+		return NewFWInternalUsageSection(base), nil
+		
+	case types.SectionTypeProgrammableHwFw1, types.SectionTypeProgrammableHwFw2:
+		return NewProgrammableHWFWSection(base), nil
+		
+	case types.SectionTypeDigitalCertPtr:
+		return NewDigitalCertPtrSection(base), nil
+		
+	case types.SectionTypeDigitalCertRw:
+		return NewDigitalCertRWSection(base), nil
+		
 	// Add more specific section types as needed
 	
 	default:

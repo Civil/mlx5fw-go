@@ -20,4 +20,5 @@ var (
 	ErrReadFailed       = merry.New("failed to read data")
 	ErrInvalidOffset    = merry.New("invalid offset")
 	ErrInvalidSize      = merry.New("invalid size")
+	ErrInvalidDataSize  = merry.New("invalid data size")
 )

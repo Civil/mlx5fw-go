@@ -222,10 +222,21 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 			
 			name := GetSectionTypeName(section)
 			
+			// Calculate display addresses
+			// For sections with CRC_IN_SECTION, mstflint shows the end address
+			// excluding the 4-byte CRC at the end
+			endAddr := section.Offset + uint64(section.Size) - 1
+			displaySize := section.Size
+			if section.CRCType == types.CRCInSection && section.Size >= 4 {
+				// Exclude CRC from displayed end address
+				endAddr -= 4
+				displaySize -= 4
+			}
+			
 			displaySections = append(displaySections, SectionDisplay{
 				StartAddr: section.Offset,
-				EndAddr:   section.Offset + uint64(section.Size) - 1,
-				Size:      section.Size,
+				EndAddr:   endAddr,
+				Size:      displaySize,
 				Name:      name,
 				Status:    status,
 				Section:   section,

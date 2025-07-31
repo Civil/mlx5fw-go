@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
-
-	"github.com/ghostiam/binstruct"
 )
 
 func TestITOCHeader_Unmarshal(t *testing.T) {
@@ -88,15 +86,19 @@ func TestITOCHeader_Unmarshal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			header := &ITOCHeader{}
-			err := binstruct.UnmarshalBE(tt.data, header)
+			// Use annotated version for testing
+			headerAnnotated := &ITOCHeaderAnnotated{}
+			err := headerAnnotated.Unmarshal(tt.data)
 			
 			if (err != nil) != tt.wantErr {
-				t.Errorf("UnmarshalBE() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			
 			if err == nil {
+				// Convert to legacy format for comparison
+				header := headerAnnotated.FromAnnotated()
+				
 				if header.Signature0 != tt.wantSignature {
 					t.Errorf("Signature0 = 0x%08X, want 0x%08X", header.Signature0, tt.wantSignature)
 				}
@@ -177,12 +179,14 @@ func TestITOCHeader_Marshal(t *testing.T) {
 		t.Errorf("Marshaled size = %d, want 32", buf.Len())
 	}
 
-	// Unmarshal back and verify
-	var header2 ITOCHeader
-	err = binstruct.UnmarshalBE(buf.Bytes(), &header2)
+	// Unmarshal back and verify using annotated version
+	header2Annotated := &ITOCHeaderAnnotated{}
+	err = header2Annotated.Unmarshal(buf.Bytes())
 	if err != nil {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
+	
+	header2 := header2Annotated.FromAnnotated()
 
 	if header2.Signature0 != header.Signature0 {
 		t.Errorf("Signature0 = 0x%08X, want 0x%08X", header2.Signature0, header.Signature0)
@@ -235,11 +239,15 @@ func TestITOCHeader_RealWorldData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			header := &ITOCHeader{}
-			err := binstruct.UnmarshalBE(tt.data, header)
+			// Use annotated version for testing
+			headerAnnotated := &ITOCHeaderAnnotated{}
+			err := headerAnnotated.Unmarshal(tt.data)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
+			
+			// Convert to legacy format for logging
+			header := headerAnnotated.FromAnnotated()
 
 			// Log the parsed header
 			t.Logf("%s: Sig0=0x%08X, CRC=0x%08X, Version=%d",
@@ -262,8 +270,8 @@ func BenchmarkITOCHeader_Unmarshal(b *testing.B) {
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		header := &ITOCHeader{}
-		_ = binstruct.UnmarshalBE(data, header)
+		headerAnnotated := &ITOCHeaderAnnotated{}
+		_ = headerAnnotated.Unmarshal(data)
 	}
 }
 

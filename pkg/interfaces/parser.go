@@ -40,6 +40,7 @@ type FirmwareInfo struct {
 	PartNumber      string
 	Description     string
 	PSID            string
+	OrigPSID        string  // Original PSID (shown when different from PSID)
 	PRSName         string
 	
 	// ROM information
@@ -50,6 +51,15 @@ type FirmwareInfo struct {
 	BaseGUIDNum     int
 	BaseMAC         uint64
 	BaseMACNum      int
+	
+	// Additional GUID/MAC for dual format (encrypted firmware)
+	BaseGUID2       uint64
+	BaseGUID2Num    int
+	BaseMAC2        uint64
+	BaseMAC2Num     int
+	GUIDStep        uint8
+	MACStep         uint8
+	UseDualFormat   bool  // Whether to display GUID1/GUID2 format
 	
 	// VSD information
 	ImageVSD        string
