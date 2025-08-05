@@ -97,10 +97,8 @@ func TestToolsArea(t *testing.T) {
 	binary.Read(buf, binary.BigEndian, &ta.BinaryHeader.Version)
 	binary.Read(buf, binary.BigEndian, &ta.BinaryHeader.Reserved)
 
-	// Then get the data
-	if len(toolsAreaData) > 8 {
-		ta.Data = toolsAreaData[8:]
-	}
+	// The ToolsArea struct no longer has a Data field
+	// The data after the header is now part of the section data
 
 	if ta.BinaryHeader.Length != 0x40 {
 		t.Errorf("BinaryHeader.Length = %d, want %d", ta.BinaryHeader.Length, 0x40)
@@ -108,8 +106,9 @@ func TestToolsArea(t *testing.T) {
 	if ta.BinaryHeader.Type != 0x10 {
 		t.Errorf("BinaryHeader.Type = 0x%02X, want 0x10", ta.BinaryHeader.Type)
 	}
-	if string(ta.Data[:10]) != "TOOLS_DATA" {
-		t.Errorf("Data prefix = %q, want %q", string(ta.Data[:10]), "TOOLS_DATA")
+	// Check the data after the header directly
+	if len(toolsAreaData) > 18 && string(toolsAreaData[8:18]) != "TOOLS_DATA" {
+		t.Errorf("Data prefix = %q, want %q", string(toolsAreaData[8:18]), "TOOLS_DATA")
 	}
 }
 

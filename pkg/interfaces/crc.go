@@ -1,7 +1,6 @@
 package interfaces
 
 import (
-	"fmt"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
 
@@ -12,6 +11,9 @@ type CRCCalculator interface {
 	
 	// CalculateWithParams calculates CRC with specific parameters
 	CalculateWithParams(data []byte, polynomial, initial, xorOut uint32) uint32
+	
+	// CalculateImageCRC calculates CRC for firmware image data (handles endianness)
+	CalculateImageCRC(data []byte, sizeInDwords int) uint16
 	
 	// GetType returns the CRC type
 	GetType() types.CRCType
@@ -32,21 +34,3 @@ type SectionCRCHandler interface {
 	HasEmbeddedCRC() bool
 }
 
-// CRCMismatchError represents a CRC verification failure
-type CRCMismatchError struct {
-	Expected uint32
-	Actual   uint32
-}
-
-// Error returns the error message
-func (e *CRCMismatchError) Error() string {
-	return fmt.Sprintf("CRC mismatch: expected 0x%04x, got 0x%04x", e.Expected, e.Actual)
-}
-
-// NewCRCMismatchError creates a new CRC mismatch error
-func NewCRCMismatchError(expected, actual uint32) error {
-	return &CRCMismatchError{
-		Expected: expected,
-		Actual:   actual,
-	}
-}

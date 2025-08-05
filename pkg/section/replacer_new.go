@@ -29,7 +29,7 @@ func NewReplacerNew(parser *fs4.Parser, firmware []byte, logger *zap.Logger) *Re
 }
 
 // ReplaceSection replaces a section with new data using the new interface
-func (r *ReplacerNew) ReplaceSection(section interfaces.SectionInterface, newData []byte) ([]byte, error) {
+func (r *ReplacerNew) ReplaceSection(section interfaces.CompleteSectionInterface, newData []byte) ([]byte, error) {
 	r.logger.Info("Replacing section",
 		zap.String("type", section.TypeName()),
 		zap.Uint64("offset", section.Offset()),

@@ -2,7 +2,6 @@ package sections
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
@@ -13,16 +12,17 @@ type Boot2Section struct {
 	*interfaces.BaseSection
 	
 	// BOOT2 specific fields
-	Magic      uint32 `json:"magic"`       // Offset 0x00
+	Magic      uint32 `json:"magic"`        // Offset 0x00
 	SizeDwords uint32 `json:"size_dwords"` // Offset 0x04 - size in dwords
 	Reserved   uint64 `json:"reserved"`    // Offset 0x08
 	
 	// The actual boot2 code data (without header and CRC)
-	CodeData []byte `json:"-"` // Binary data not included in JSON
+	CodeData []byte `json:"-"` // Binary code data - not parsed, requires raw data file
 }
 
 // NewBoot2Section creates a new BOOT2 section from base
 func NewBoot2Section(base *interfaces.BaseSection) *Boot2Section {
+	base.HasRawData = true // BOOT2 contains unparseable code data
 	return &Boot2Section{
 		BaseSection: base,
 	}
@@ -62,30 +62,14 @@ func (s *Boot2Section) Parse(data []byte) error {
 	return nil
 }
 
-// MarshalJSON returns JSON representation of the BOOT2 section
-func (s *Boot2Section) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]interface{}{
-		"type":         s.Type(),
-		"type_name":    s.TypeName(),
-		"offset":       s.Offset(),
-		"size":         s.Size(),
-		"crc_type":     s.CRCType(),
-		"is_encrypted": s.IsEncrypted(),
-		"magic":        s.Magic,
-		"size_dwords":  s.SizeDwords,
-		"reserved":     s.Reserved,
-		"code_size":    len(s.CodeData),
-		"has_raw_data": true, // BOOT2 always needs binary file
-	})
+// VerifyCRC verifies the CRC for BOOT2 section
+// BOOT2 has a special CRC format where the CRC16 is stored in the lower 16 bits
+// of the last dword, at offset (size_dwords + 3) * 4
+func (s *Boot2Section) VerifyCRC() error {
+	// If we have a Boot2CRCHandler, it will handle the special format
+	// Otherwise fall back to base implementation
+	return s.BaseSection.VerifyCRC()
 }
 
-// GetReconstruction returns the reconstruction info for reassembly
-func (s *Boot2Section) GetReconstruction() interface{} {
-	return map[string]interface{}{
-		"magic":        s.Magic,
-		"size_dwords":  s.SizeDwords,
-		"reserved":     s.Reserved,
-		"has_raw_data": true, // BOOT2 still needs binary file for code data
-	}
-}
+
 

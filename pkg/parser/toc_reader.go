@@ -76,16 +76,13 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEn
 		}
 		
 		
-		// Debug: Log CRC info for certain section types
-		if entry.Type == uint8(types.SectionTypeImageSignature256) || 
-		   entry.Type == uint8(types.SectionTypeFwNvLog) ||
-		   entry.Type == uint8(types.SectionTypeHMACDigest) {
-			r.logger.Debug("ITOC entry CRC info",
-				zap.String("type", types.GetSectionTypeName(uint16(entry.Type))),
-				zap.Bool("no_crc", entry.GetNoCRC()),
-				zap.Uint8("crc_field", entry.CRCField),
-				zap.String("raw_bytes_25_26", fmt.Sprintf("%02x %02x", entryData[25], entryData[26])))
-		}
+		// Debug: Log CRC info for all section types
+		r.logger.Debug("ITOC entry CRC info",
+			zap.String("type", types.GetSectionTypeName(uint16(entry.Type))),
+			zap.Uint8("crc_field", entry.CRCField),
+			zap.String("crc_type", entry.GetCRCType().String()),
+			zap.Uint16("section_crc", entry.SectionCRC),
+			zap.Bool("no_crc", entry.GetNoCRC()))
 
 		// Stop at end marker (type 0xFF)
 		if entry.GetType() == 0xFF {
@@ -166,7 +163,7 @@ func (r *TOCReader) ReadTOCSections(data []byte, tocAddr uint32, isDTOC bool) ([
 }
 
 // ReadTOCSectionsNew reads TOC sections and returns section interfaces
-func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool) ([]interfaces.SectionInterface, error) {
+func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool) ([]interfaces.CompleteSectionInterface, error) {
 	if r.sectionFactory == nil {
 		return nil, merry.New("section factory not set")
 	}
@@ -180,6 +177,18 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 		zap.String("type", tocType),
 		zap.Uint32("address", tocAddr))
 
+	// Read and validate header
+	header, err := r.ReadTOCHeader(data, tocAddr, isDTOC)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log header info
+	r.logger.Debug("TOC header",
+		zap.String("type", tocType),
+		zap.Uint32("signature", header.Signature0),
+		zap.Uint32("version", header.Version))
+
 	// Read entries
 	entries, err := r.ReadTOCEntries(data, tocAddr)
 	if err != nil {
@@ -187,7 +196,7 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 	}
 
 	// Convert entries to sections using factory
-	var sections []interfaces.SectionInterface
+	var sections []interfaces.CompleteSectionInterface
 	for _, entry := range entries {
 		sectionType := entry.GetType()
 		if isDTOC {
@@ -215,10 +224,29 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 				zap.String("hex_addr", fmt.Sprintf("0x%x", flashAddr)))
 		}
 		
+		// Special handling for HASHES_TABLE sections (type 0xfa)
+		// HASHES_TABLE sections have dynamic size that needs to be calculated from the header
+		var sectionSize uint32 = entry.GetSize()
+		if sectionType == 0xfa && !isDTOC { // HASHES_TABLE sections
+			calculatedSize, err := r.calculateHashesTableSize(data, flashAddr)
+			if err != nil {
+				r.logger.Warn("Failed to calculate HASHES_TABLE size, using ITOC entry size",
+					zap.Uint32("flash_addr", flashAddr),
+					zap.Uint32("itoc_size", entry.GetSize()),
+					zap.Error(err))
+			} else {
+				r.logger.Debug("HASHES_TABLE dynamic size calculation",
+					zap.Uint32("flash_addr", flashAddr),
+					zap.Uint32("itoc_size", entry.GetSize()),
+					zap.Uint32("calculated_size", calculatedSize))
+				sectionSize = calculatedSize
+			}
+		}
+		
 		section, err := r.sectionFactory.CreateSection(
 			uint16(sectionType),
 			uint64(flashAddr),
-			entry.GetSize(),
+			sectionSize,
 			r.GetCRCType(entry),
 			uint32(entry.SectionCRC),
 			false, // isEncrypted - will be determined later
@@ -247,18 +275,11 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 	return sections, nil
 }
 
-// GetCRCType determines the CRC type from ITOC entry flags
+// GetCRCType determines the CRC type from ITOC entry
 func (r *TOCReader) GetCRCType(entry *types.ITOCEntryAnnotated) types.CRCType {
-	// If CRC field has bit 207 set (no_crc flag), it means NO CRC
-	if entry.GetNoCRC() {
-		return types.CRCNone
-	}
-	// If there's a section CRC value in the ITOC entry, use it
-	if entry.SectionCRC != 0 {
-		return types.CRCInITOCEntry
-	}
-	// Otherwise, CRC is at the end of the section
-	return types.CRCInSection
+	// Use the entry's GetCRCType method which extracts the CRC type
+	// from the 3-bit CRCField that was parsed by annotations
+	return entry.GetCRCType()
 }
 
 // getSectionName returns the section name based on type
@@ -317,4 +338,32 @@ func (r *TOCReader) ReadTOCRawEntries(data []byte, tocAddr uint32, isDTOC bool) 
 	}
 
 	return entries, nil
+}
+
+// calculateHashesTableSize calculates the dynamic size of a HASHES_TABLE section
+// by reading its header and using the formula: (4 + DwSize) * 4
+func (r *TOCReader) calculateHashesTableSize(data []byte, flashAddr uint32) (uint32, error) {
+	// Check bounds for header read (FS4HashesTableHeader is 12 bytes)
+	if flashAddr+12 > uint32(len(data)) {
+		return 0, merry.Errorf("HASHES_TABLE header out of bounds at 0x%x", flashAddr)
+	}
+	
+	// Read header data
+	headerData := data[flashAddr : flashAddr+12]
+	
+	// Parse header using FS4HashesTableHeader structure
+	header := &types.FS4HashesTableHeader{}
+	if err := header.Unmarshal(headerData); err != nil {
+		return 0, merry.Wrap(err)
+	}
+	
+	// Calculate size using mstflint formula: (4 + DwSize) * 4
+	calculatedSize := (4 + header.DwSize) * 4
+	
+	r.logger.Debug("HASHES_TABLE header parsed",
+		zap.Uint32("flash_addr", flashAddr),
+		zap.Uint32("dw_size", header.DwSize),
+		zap.Uint32("calculated_size", calculatedSize))
+	
+	return calculatedSize, nil
 }

@@ -232,6 +232,12 @@ func ParseStruct(structType reflect.Type) (*StructAnnotations, error) {
 
 		// Parse the offset tag
 		tag := field.Tag.Get("offset")
+		
+		// Handle "-" tag which means skip this field (standard Go convention)
+		if tag == "-" {
+			continue
+		}
+		
 		fieldAnnotation, err := ParseTag(tag, field.Type)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing tag for field %s: %w", field.Name, err)

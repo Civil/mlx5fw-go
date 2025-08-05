@@ -1,9 +1,6 @@
 package sections
 
 import (
-	"encoding/hex"
-	"encoding/json"
-	
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
@@ -12,11 +9,13 @@ import (
 // ImageSignatureSection represents an IMAGE_SIGNATURE_256 section
 type ImageSignatureSection struct {
 	*interfaces.BaseSection
-	Signature *types.ImageSignature
+	ImageSignature  *types.ImageSignature         `json:"image_signature,omitempty"`
+	Padding         types.FWByteSlice             `json:"padding,omitempty"`
 }
 
 // NewImageSignatureSection creates a new ImageSignature section
 func NewImageSignatureSection(base *interfaces.BaseSection) *ImageSignatureSection {
+	base.HasRawData = true // Default to true until successfully parsed
 	return &ImageSignatureSection{
 		BaseSection: base,
 	}
@@ -30,76 +29,43 @@ func (s *ImageSignatureSection) Parse(data []byte) error {
 		return merry.Errorf("IMAGE_SIGNATURE section too small: expected at least 260 bytes, got %d", len(data))
 	}
 	
-	s.Signature = &types.ImageSignature{}
-	if err := s.Signature.Unmarshal(data); err != nil {
+	s.ImageSignature = &types.ImageSignature{}
+	if err := s.ImageSignature.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
 	
+	// Check for padding data after the signature
+	if len(data) > 260 {
+		paddingData := data[260:]
+		// Check if padding is non-zero
+		hasNonZeroPadding := false
+		for _, b := range paddingData {
+			if b != 0 {
+				hasNonZeroPadding = true
+				break
+			}
+		}
+		if hasNonZeroPadding {
+			s.Padding = types.FWByteSlice(paddingData)
+		}
+	}
+	
+	s.BaseSection.HasRawData = false // Successfully parsed
 	return nil
 }
 
-// MarshalJSON returns JSON representation of the IMAGE_SIGNATURE section
-func (s *ImageSignatureSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-	}
-	
-	// Check if signature is blank (all 0xFF)
-	isBlank := true
-	if s.Signature != nil {
-		if s.Signature.SignatureType != 0xFFFFFFFF {
-			isBlank = false
-		} else {
-			for _, b := range s.Signature.Signature {
-				if b != 0xFF {
-					isBlank = false
-					break
-				}
-			}
-		}
-		
-		// If blank signature with non-standard padding, mark as needing raw data
-		if isBlank && s.Size() != 260 { // 4 + 256 
-			result["has_raw_data"] = true
-		}
-		
-		result["signature"] = map[string]interface{}{
-			"signature_type": s.Signature.SignatureType,
-			"signature":      hex.EncodeToString(s.Signature.Signature[:]),
-		}
-		
-		// Check for padding data after the signature
-		rawData := s.GetRawData()
-		if len(rawData) > 260 {
-			paddingData := rawData[260:]
-			// Check if padding is non-zero
-			hasNonZeroPadding := false
-			for _, b := range paddingData {
-				if b != 0 {
-					hasNonZeroPadding = true
-					break
-				}
-			}
-			if hasNonZeroPadding {
-				result["padding"] = hex.EncodeToString(paddingData)
-			}
-		}
-	}
-	
-	return json.Marshal(result)
-}
+
 
 // ImageSignature2Section represents an IMAGE_SIGNATURE_512 section
 type ImageSignature2Section struct {
 	*interfaces.BaseSection
-	Signature *types.ImageSignature2
+	ImageSignature *types.ImageSignature2 `json:"image_signature,omitempty"`
+	Padding        types.FWByteSlice     `json:"padding,omitempty"`
 }
 
 // NewImageSignature2Section creates a new ImageSignature2 section
 func NewImageSignature2Section(base *interfaces.BaseSection) *ImageSignature2Section {
+	base.HasRawData = true // Default to true until successfully parsed
 	return &ImageSignature2Section{
 		BaseSection: base,
 	}
@@ -113,76 +79,42 @@ func (s *ImageSignature2Section) Parse(data []byte) error {
 		return merry.Errorf("IMAGE_SIGNATURE_512 section too small: expected at least 516 bytes, got %d", len(data))
 	}
 	
-	s.Signature = &types.ImageSignature2{}
-	if err := s.Signature.Unmarshal(data); err != nil {
+	s.ImageSignature = &types.ImageSignature2{}
+	if err := s.ImageSignature.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
 	
+	// Check for padding data after the signature
+	if len(data) > 516 {
+		paddingData := data[516:]
+		// Check if padding is non-zero
+		hasNonZeroPadding := false
+		for _, b := range paddingData {
+			if b != 0 {
+				hasNonZeroPadding = true
+				break
+			}
+		}
+		if hasNonZeroPadding {
+			s.Padding = types.FWByteSlice(paddingData)
+		}
+	}
+	
+	s.BaseSection.HasRawData = false // Successfully parsed
 	return nil
 }
 
-// MarshalJSON returns JSON representation of the IMAGE_SIGNATURE_512 section
-func (s *ImageSignature2Section) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-	}
-	
-	// Check if signature is blank (all 0xFF)
-	isBlank := true
-	if s.Signature != nil {
-		if s.Signature.SignatureType != 0xFFFFFFFF {
-			isBlank = false
-		} else {
-			for _, b := range s.Signature.Signature {
-				if b != 0xFF {
-					isBlank = false
-					break
-				}
-			}
-		}
-		
-		// If blank signature with non-standard padding, mark as needing raw data
-		if isBlank && s.Size() != 516 { // 4 + 512
-			result["has_raw_data"] = true
-		}
-		
-		result["signature"] = map[string]interface{}{
-			"signature_type": s.Signature.SignatureType,
-			"signature":      hex.EncodeToString(s.Signature.Signature[:]),
-		}
-		
-		// Check for padding data after the signature
-		rawData := s.GetRawData()
-		if len(rawData) > 516 {
-			paddingData := rawData[516:]
-			// Check if padding is non-zero
-			hasNonZeroPadding := false
-			for _, b := range paddingData {
-				if b != 0 {
-					hasNonZeroPadding = true
-					break
-				}
-			}
-			if hasNonZeroPadding {
-				result["padding"] = hex.EncodeToString(paddingData)
-			}
-		}
-	}
-	
-	return json.Marshal(result)
-}
+
 
 // PublicKeysSection represents a PUBLIC_KEYS_2048 section
 type PublicKeysSection struct {
 	*interfaces.BaseSection
-	Keys *types.PublicKeys
+	PublicKeys *types.PublicKeys `json:"public_keys,omitempty"`
 }
 
 // NewPublicKeysSection creates a new PublicKeys section
 func NewPublicKeysSection(base *interfaces.BaseSection) *PublicKeysSection {
+	base.HasRawData = true // Default to true until successfully parsed
 	return &PublicKeysSection{
 		BaseSection: base,
 	}
@@ -192,47 +124,26 @@ func NewPublicKeysSection(base *interfaces.BaseSection) *PublicKeysSection {
 func (s *PublicKeysSection) Parse(data []byte) error {
 	s.SetRawData(data)
 	
-	s.Keys = &types.PublicKeys{}
-	if err := s.Keys.Unmarshal(data); err != nil {
+	s.PublicKeys = &types.PublicKeys{}
+	if err := s.PublicKeys.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
 	
+	s.BaseSection.HasRawData = false // Successfully parsed
 	return nil
 }
 
-// MarshalJSON returns JSON representation of the PUBLIC_KEYS section
-func (s *PublicKeysSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-	}
-	
-	if s.Keys != nil {
-		keys := make([]map[string]interface{}, 0)
-		for i, key := range s.Keys.Keys {
-			keys = append(keys, map[string]interface{}{
-				"index":    i,
-				"reserved": key.Reserved,
-				"uuid":     hex.EncodeToString(key.UUID[:]),
-				"key":      hex.EncodeToString(key.Key[:]),
-			})
-		}
-		result["keys"] = keys
-	}
-	
-	return json.Marshal(result)
-}
+
 
 // PublicKeys2Section represents a PUBLIC_KEYS_4096 section
 type PublicKeys2Section struct {
 	*interfaces.BaseSection
-	Keys *types.PublicKeys2
+	PublicKeys *types.PublicKeys2 `json:"public_keys,omitempty"`
 }
 
 // NewPublicKeys2Section creates a new PublicKeys2 section
 func NewPublicKeys2Section(base *interfaces.BaseSection) *PublicKeys2Section {
+	base.HasRawData = true // Default to true until successfully parsed
 	return &PublicKeys2Section{
 		BaseSection: base,
 	}
@@ -242,35 +153,13 @@ func NewPublicKeys2Section(base *interfaces.BaseSection) *PublicKeys2Section {
 func (s *PublicKeys2Section) Parse(data []byte) error {
 	s.SetRawData(data)
 	
-	s.Keys = &types.PublicKeys2{}
-	if err := s.Keys.Unmarshal(data); err != nil {
+	s.PublicKeys = &types.PublicKeys2{}
+	if err := s.PublicKeys.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
 	
+	s.BaseSection.HasRawData = false // Successfully parsed
 	return nil
 }
 
-// MarshalJSON returns JSON representation of the PUBLIC_KEYS_4096 section
-func (s *PublicKeys2Section) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-	}
-	
-	if s.Keys != nil {
-		keys := make([]map[string]interface{}, 0)
-		for i, key := range s.Keys.Keys {
-			keys = append(keys, map[string]interface{}{
-				"index":    i,
-				"reserved": key.Reserved,
-				"uuid":     hex.EncodeToString(key.UUID[:]),
-				"key":      hex.EncodeToString(key.Key[:]),
-			})
-		}
-		result["keys"] = keys
-	}
-	
-	return json.Marshal(result)
-}
+

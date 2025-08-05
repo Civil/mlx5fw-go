@@ -57,80 +57,25 @@ func (s *GenericSection) CalculateCRC() (uint32, error) {
 	}
 }
 
-// VerifyCRC verifies the section's CRC based on its CRC type
+// VerifyCRC verifies the section's CRC using the BaseSection implementation
+// which properly uses the CRC handlers set up by the factory
 func (s *GenericSection) VerifyCRC() error {
-	entry := s.GetEntry()
-	if entry == nil {
-		return nil // No entry, no CRC to verify
-	}
-	
-	switch s.CRCType() {
-	case types.CRCInSection:
-		// CRC is in the last 4 bytes of section
-		data := s.GetRawData()
-		if len(data) < 4 {
-			return merry.New("section too small for CRC")
-		}
-		
-		// For IN_SECTION CRCs, the format is:
-		// - 16-bit CRC in upper 16 bits (bytes 0-1)  
-		// - Lower 16 bits are 0 (bytes 2-3)
-		// Stored as big-endian uint32
-		expectedCRCFull := uint32(data[len(data)-4])<<24 | uint32(data[len(data)-3])<<16 |
-			uint32(data[len(data)-2])<<8 | uint32(data[len(data)-1])
-		expectedCRC := uint16(expectedCRCFull >> 16) // Extract upper 16 bits
-		
-		calculatedCRC, err := s.CalculateCRC()
-		if err != nil {
-			return err
-		}
-		
-		if expectedCRC != uint16(calculatedCRC) {
-			return &interfaces.CRCMismatchError{
-				Expected: uint32(expectedCRC),
-				Actual:   calculatedCRC,
-			}
-		}
-		
-	case types.CRCInITOCEntry:
-		// CRC is in ITOC entry
-		if entry.GetNoCRC() {
-			return nil // No CRC to verify
-		}
-		
-		expectedCRC := entry.GetCRC()
-		data := s.GetRawData()
-		
-		// Calculate CRC over entire section
-		crc := s.crcCalc.CalculateSoftwareCRC16(data)
-		calculatedCRC := uint32(crc)
-		
-		if uint16(expectedCRC) != uint16(calculatedCRC) {
-			return &interfaces.CRCMismatchError{
-				Expected: uint32(expectedCRC),
-				Actual:   calculatedCRC,
-			}
-		}
-		
-	case types.CRCNone:
-		// No CRC to verify
-		return nil
-	}
-	
-	return nil
+	// Use the BaseSection implementation which handles CRC handlers properly
+	return s.BaseSection.VerifyCRC()
 }
 
 // MarshalJSON returns JSON representation of the generic section
 func (s *GenericSection) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]interface{}{
-		"type":         s.Type(),
-		"type_name":    s.TypeName(),
-		"offset":       s.Offset(),
-		"size":         s.Size(),
-		"crc_type":     s.CRCType(),
-		"is_encrypted": s.IsEncrypted(),
-		"is_device_data": s.IsDeviceData(),
-		"data_size":    len(s.GetRawData()),
-		"has_raw_data": true,  // Flag indicating binary file is needed for reconstruction
-	})
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true,  // Flag indicating binary file is needed for reconstruction
+	}
+	
+	return json.Marshal(sectionJSON)
 }

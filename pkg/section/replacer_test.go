@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
+	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/types"
+	"github.com/Civil/mlx5fw-go/pkg/types/sections"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -56,7 +58,7 @@ func TestDetermineFirmwareSizeLimit(t *testing.T) {
 
 func TestGetCRCType(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	r := &Replacer{logger: logger}
+	tocReader := parser.NewTOCReader(logger)
 
 	tests := []struct {
 		name        string
@@ -66,39 +68,29 @@ func TestGetCRCType(t *testing.T) {
 	}{
 		{
 			name: "no CRC flag set",
-			entry: &types.ITOCEntry{
-				Data: [32]byte{},
-			},
+			entry: &types.ITOCEntry{},
 			expectedCRC: types.CRCNone,
 			setupEntry: func(e *types.ITOCEntry) {
-				// Set CRC field to 1 (NOCRC) at bits 205-207
-				// Bit 207 is the LSB of the 3-bit field
-				e.Data[25] |= 0x01 // Set bit 207 (LSB of 3-bit field for value 1)
+				// Set CRC field to 1 (NOCRC) 
+				e.CRCField = 0x01
 			},
 		},
 		{
 			name: "CRC in ITOC entry",
-			entry: &types.ITOCEntry{
-				Data: [32]byte{},
-			},
+			entry: &types.ITOCEntry{},
 			expectedCRC: types.CRCInITOCEntry,
 			setupEntry: func(e *types.ITOCEntry) {
-				// Set SectionCRC bits (208-223) to non-zero value
-				// Bits 208-223 = byte 26 bit 0 to byte 27 bit 7
-				e.Data[26] = 0x12
-				e.Data[27] = 0x34
+				// Set SectionCRC to non-zero value
+				e.SectionCRC = 0x1234
 			},
 		},
 		{
 			name: "CRC in section",
-			entry: &types.ITOCEntry{
-				Data: [32]byte{},
-			},
+			entry: &types.ITOCEntry{},
 			expectedCRC: types.CRCInSection,
 			setupEntry: func(e *types.ITOCEntry) {
-				// Set CRC field to 7 at bits 205-207
-				// For value 7, we need bit pattern 111
-				e.Data[25] |= 0x07 // Set bits 205-207 to 111 (value 7)
+				// CRC in section is determined by having neither no_crc flag nor section CRC
+				// Don't set CRCField to 1 (no_crc) and keep SectionCRC as 0
 			},
 		},
 	}
@@ -108,65 +100,15 @@ func TestGetCRCType(t *testing.T) {
 			if tt.setupEntry != nil {
 				tt.setupEntry(tt.entry)
 			}
-			tt.entry.ParseFields()
 			
-			crcType := r.tocReader.GetCRCType(tt.entry)
+			// Use GetCRCTypeLegacy for ITOCEntry
+			crcType := tocReader.GetCRCTypeLegacy(tt.entry)
 			assert.Equal(t, tt.expectedCRC, crcType)
 		})
 	}
 }
 
-func TestSetBits(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	r := &Replacer{logger: logger}
-
-	tests := []struct {
-		name      string
-		dataSize  int
-		bitOffset int
-		bitCount  int
-		value     uint32
-		expected  []byte
-	}{
-		{
-			name:      "set single bit",
-			dataSize:  1,
-			bitOffset: 3,
-			bitCount:  1,
-			value:     1,
-			expected:  []byte{0x10}, // bit 3 set
-		},
-		{
-			name:      "set multiple bits",
-			dataSize:  2,
-			bitOffset: 4,
-			bitCount:  8,
-			value:     0xFF,
-			expected:  []byte{0x0F, 0xF0},
-		},
-		{
-			name:      "clear bits",
-			dataSize:  1,
-			bitOffset: 0,
-			bitCount:  4,
-			value:     0,
-			expected:  []byte{0x00},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			data := make([]byte, tt.dataSize)
-			if tt.name == "clear bits" {
-				data[0] = 0xFF // Start with all bits set
-				tt.expected[0] = 0x0F // Expect lower 4 bits cleared
-			}
-			
-			r.setBits(data, tt.bitOffset, tt.bitCount, tt.value)
-			assert.Equal(t, tt.expected, data)
-		})
-	}
-}
+// TestSetBits has been removed as setBits method no longer exists in the current implementation
 
 func TestFindMagicPattern(t *testing.T) {
 	logger := zaptest.NewLogger(t)
@@ -258,41 +200,62 @@ func TestUpdateSectionCRC(t *testing.T) {
 	
 	tests := []struct {
 		name        string
-		section     *interfaces.Section
+		section     interfaces.SectionInterface
 		workingData []byte
 		newSize     uint32
 		expectError bool
 	}{
 		{
 			name: "CRC none - no update",
-			section: &interfaces.Section{
-				Type:    types.SectionTypeDbgFWINI,
-				Offset:  0,
-				Size:    100,
-				CRCType: types.CRCNone,
-			},
+			section: sections.NewGenericSection(
+				interfaces.NewBaseSection(
+					types.SectionTypeDbgFWINI,
+					0,     // offset
+					100,   // size
+					types.CRCNone,
+					0,     // crc
+					false, // isEncrypted
+					false, // isDeviceData
+					nil,   // entry
+					false, // isFromHWPointer
+				),
+			),
 			workingData: make([]byte, 200),
 			newSize:     100,
 		},
 		{
 			name: "CRC in ITOC entry - deferred",
-			section: &interfaces.Section{
-				Type:    types.SectionTypeItoc,
-				Offset:  0,
-				Size:    100,
-				CRCType: types.CRCInITOCEntry,
-			},
+			section: sections.NewITOCSection(
+				interfaces.NewBaseSection(
+					types.SectionTypeItoc,
+					0,     // offset
+					100,   // size
+					types.CRCInITOCEntry,
+					0,     // crc
+					false, // isEncrypted
+					false, // isDeviceData
+					nil,   // entry
+					false, // isFromHWPointer
+				),
+			),
 			workingData: make([]byte, 200),
 			newSize:     100,
 		},
 		{
 			name: "CRC in section",
-			section: &interfaces.Section{
-				Type:    types.SectionTypeDbgFWINI,
-				Offset:  0,
-				Size:    100,
-				CRCType: types.CRCInSection,
-			},
+			section: sections.NewGenericSection(
+				interfaces.NewBaseSection(
+					types.SectionTypeDbgFWINI,
+					0,     // offset
+					100,   // size
+					types.CRCInSection,
+					0,     // crc
+					false, // isEncrypted
+					false, // isDeviceData
+					nil,   // entry
+					false, // isFromHWPointer
+				),
+			),
 			workingData: func() []byte {
 				data := make([]byte, 200)
 				// Fill with test data
@@ -305,12 +268,19 @@ func TestUpdateSectionCRC(t *testing.T) {
 		},
 		{
 			name: "section too small for CRC",
-			section: &interfaces.Section{
-				Type:    types.SectionTypeDbgFWINI,
-				Offset:  0,
-				Size:    2,
-				CRCType: types.CRCInSection,
-			},
+			section: sections.NewGenericSection(
+				interfaces.NewBaseSection(
+					types.SectionTypeDbgFWINI,
+					0,     // offset
+					2,     // size
+					types.CRCInSection,
+					0,     // crc
+					false, // isEncrypted
+					false, // isDeviceData
+					nil,   // entry
+					false, // isFromHWPointer
+				),
+			),
 			workingData: make([]byte, 10),
 			newSize:     2,
 			expectError: true,
@@ -330,8 +300,8 @@ func TestUpdateSectionCRC(t *testing.T) {
 				require.NoError(t, err)
 				
 				// For CRC in section, verify CRC was written
-				if tt.section.CRCType == types.CRCInSection {
-					lastDwordOffset := tt.section.Offset + uint64(tt.newSize) - 4
+				if tt.section.CRCType() == types.CRCInSection {
+					lastDwordOffset := tt.section.Offset() + uint64(tt.newSize) - 4
 					lastDword := binary.BigEndian.Uint32(tt.workingData[lastDwordOffset:])
 					crc := uint16(lastDword & 0xFFFF)
 					assert.NotZero(t, crc, "CRC should be calculated and written")
@@ -346,19 +316,15 @@ func TestSerializeITOCEntry(t *testing.T) {
 	r := &Replacer{logger: logger}
 
 	entry := &types.ITOCEntry{
-		Type:       types.SectionTypeDbgFWINI,
-		Size:       0x1000, // 4KB
-		Param0:     0x12345,
+		Type:       uint8(types.SectionTypeDbgFWINI),
+		SizeDwords: 0x400, // 0x1000 bytes / 4 = 0x400 dwords
+		Param0Low:  0x5,
+		Param0High: 0x1234,
 		Param1:     0xABCDEF00,
-		FlashAddr:  0x100000, // 1MB offset
+		FlashAddrDwords: 0x100000, // Already in bytes despite field name
 		Encrypted:  true,
-		CRC:        7,
+		CRCField:   7,
 		SectionCRC: 0x5678,
-	}
-
-	// Initialize entry data
-	for i := range entry.Data {
-		entry.Data[i] = 0
 	}
 
 	data := make([]byte, 32)
@@ -370,10 +336,9 @@ func TestSerializeITOCEntry(t *testing.T) {
 	assert.Equal(t, uint8(types.SectionTypeDbgFWINI), data[0])
 	
 	// Size in dwords should be in bits 8-29
-	sizeDwords := entry.Size >> 2
 	// Read bits 8-29 
 	sizeFromData := (uint32(data[1])<<14 | uint32(data[2])<<6 | uint32(data[3])>>2) & 0x3FFFFF
-	assert.Equal(t, sizeDwords, sizeFromData)
+	assert.Equal(t, uint32(0x400), sizeFromData)
 	
 	// Param1 should be at bytes 8-11
 	assert.Equal(t, entry.Param1, binary.BigEndian.Uint32(data[8:12]))

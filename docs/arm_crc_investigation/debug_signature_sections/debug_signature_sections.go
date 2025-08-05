@@ -40,12 +40,13 @@ func main() {
 		if sectionList, ok := sections[sectionType]; ok {
 			for _, section := range sectionList {
 				fmt.Printf("Section %s (0x%x):\n", types.GetSectionTypeName(sectionType), sectionType)
-				fmt.Printf("  Offset: 0x%x\n", section.Offset)
-				fmt.Printf("  Size: 0x%x\n", section.Size)
-				fmt.Printf("  CRCType: %v\n", section.CRCType)
-				if section.Entry != nil {
-					fmt.Printf("  Entry CRC field: %d\n", section.Entry.GetCRC())
-					fmt.Printf("  Entry GetNoCRC(): %v\n", section.Entry.GetNoCRC())
+				fmt.Printf("  Offset: 0x%x\n", section.Offset())
+				fmt.Printf("  Size: 0x%x\n", section.Size())
+				fmt.Printf("  CRCType: %v\n", section.CRCType())
+				entry := section.GetITOCEntry()
+				if entry != nil {
+					fmt.Printf("  Entry CRC field: %d\n", entry.GetCRC())
+					fmt.Printf("  Entry GetNoCRC(): %v\n", entry.GetNoCRC())
 				}
 				fmt.Println()
 			}

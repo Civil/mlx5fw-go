@@ -1,6 +1,7 @@
 package sections
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
@@ -58,4 +59,28 @@ func (s *ToolsAreaExtendedSection) MarshalJSON() ([]byte, error) {
 	}
 	
 	return json.Marshal(result)
+}
+
+// VerifyCRC verifies the CRC for TOOLS_AREA section
+// TOOLS_AREA has a special CRC format: 16-bit CRC at offset 62-63
+func (s *ToolsAreaExtendedSection) VerifyCRC() error {
+	// TOOLS_AREA specific CRC handling
+	rawData := s.GetRawData()
+	if s.CRCType() == types.CRCInSection && len(rawData) >= 64 {
+		// CRC is at offset 62-63 (last 2 bytes of 64-byte structure)
+		// Extract the 16-bit CRC
+		crcBytes := rawData[62:64]
+		expectedCRC := uint32(binary.BigEndian.Uint16(crcBytes))
+		
+		// The CRC handler should be ToolsAreaCRCHandler which knows how to
+		// calculate CRC on first 60 bytes using CalculateImageCRC
+		crcHandler := s.GetCRCHandler()
+		if crcHandler != nil {
+			// Pass the full 64-byte data - the handler knows to use first 60 bytes
+			return crcHandler.VerifyCRC(rawData, expectedCRC, s.CRCType())
+		}
+	}
+	
+	// Fall back to base implementation for other cases
+	return s.BaseSection.VerifyCRC()
 }

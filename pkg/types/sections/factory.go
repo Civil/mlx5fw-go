@@ -23,7 +23,7 @@ func NewDefaultSectionFactory() *DefaultSectionFactory {
 // CreateSection creates a new section instance based on the section type
 func (f *DefaultSectionFactory) CreateSection(sectionType uint16, offset uint64, size uint32, 
 	crcType types.CRCType, crc uint32, isEncrypted, isDeviceData bool, 
-	entry *types.ITOCEntry, isFromHWPointer bool) (interfaces.SectionInterface, error) {
+	entry *types.ITOCEntry, isFromHWPointer bool) (interfaces.CompleteSectionInterface, error) {
 	
 	// Create base section
 	base := interfaces.NewBaseSection(sectionType, offset, size, crcType, crc, 
@@ -41,6 +41,12 @@ func (f *DefaultSectionFactory) CreateSection(sectionType uint16, offset uint64,
 		if crcAlgorithm == types.CRCAlgorithmHardware {
 			// HW pointers use hardware CRC
 			crcHandler = crcpkg.NewHardwareCRC16Handler(f.crcCalculator)
+		} else if sectionType == types.SectionTypeToolsArea {
+			// TOOLS_AREA has special CRC handling
+			crcHandler = crcpkg.NewToolsAreaCRCHandler()
+		} else if sectionType == types.SectionTypeBoot2 {
+			// BOOT2 has special CRC handling
+			crcHandler = crcpkg.NewBoot2CRCHandler()
 		} else {
 			// All other sections use software CRC16
 			crcHandler = crcpkg.NewInSectionCRC16Handler(f.crcCalculator)
@@ -150,7 +156,7 @@ func (f *DefaultSectionFactory) CreateSection(sectionType uint16, offset uint64,
 // CreateSectionFromData creates a section and parses its data
 func (f *DefaultSectionFactory) CreateSectionFromData(sectionType uint16, offset uint64, 
 	size uint32, crcType types.CRCType, crc uint32, isEncrypted, isDeviceData bool, 
-	entry *types.ITOCEntry, isFromHWPointer bool, data []byte) (interfaces.SectionInterface, error) {
+	entry *types.ITOCEntry, isFromHWPointer bool, data []byte) (interfaces.CompleteSectionInterface, error) {
 	
 	// Create the section
 	section, err := f.CreateSection(sectionType, offset, size, crcType, crc, 

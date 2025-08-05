@@ -67,9 +67,7 @@ func (i *ImageInfo) GetFWVersionString() string {
 
 // GetFWReleaseDateString returns the firmware release date as a string
 func (i *ImageInfo) GetFWReleaseDateString() string {
-	return fmt.Sprintf("%02d/%02d/%04d %02d:%02d:%02d", 
-		i.GetMonth(), i.GetDay(), i.GetYear(),
-		i.GetHour(), i.GetMinutes(), i.GetSeconds())
+	return fmt.Sprintf("%d.%d.%d", i.GetDay(), i.GetMonth(), i.GetYear())
 }
 
 // GetMICVersionString returns the MIC version as a string
@@ -92,7 +90,7 @@ func (i *ImageInfo) GetProductVerString() string {
 	if i.ProductVer != [16]byte{} {
 		return nullTerminatedString(i.ProductVer[:])
 	}
-	return i.GetFWVersionString()
+	return ""
 }
 
 // GetDescriptionString returns a description string
@@ -128,28 +126,12 @@ func (i *ImageInfo) GetSecurityMode() uint32 {
 func (i *ImageInfo) GetSecurityAndVersion() uint32 {
 	var result uint32
 	result |= uint32(i.MinorVersion) & 0xFF           // Bits 0-7
-	result |= (uint32(i.SecurityMode) & 0xFF) << 8    // Bits 8-15
-	result |= (uint32(i.Reserved0) & 0xFF) << 16      // Bits 16-23
+	result |= (uint32(i.SecurityMode) & 0xFF) << 8    // Bits 8-15 (includes MCCEnabled)
+	result |= (uint32(i.MajorVersion) & 0xFF) << 16   // Bits 16-23
+	result |= (uint32(i.Reserved0) & 0xFF) << 24      // Bits 24-31
 	
-	// For bits 24-31, construct the byte from MajorVersion and individual flags
-	var byte3 uint8 = i.MajorVersion & 0x0F  // MajorVersion uses bits 26-29 (4 bits)
-	byte3 <<= 2  // Shift to correct position (bits 26-29)
-	
-	// Set individual bit flags
-	if i.SignedFW {
-		byte3 |= 1 << 0  // Bit 24 of dword = bit 0 of byte 3
-	}
-	if i.SecureFW {
-		byte3 |= 1 << 1  // Bit 25 of dword = bit 1 of byte 3
-	}
-	if i.MCCEnabled {
-		byte3 |= 1 << 6  // Bit 30 of dword = bit 6 of byte 3
-	}
-	if i.DebugFW {
-		byte3 |= 1 << 7  // Bit 31 of dword = bit 7 of byte 3
-	}
-	
-	result |= uint32(byte3) << 24  // Place byte 3 in bits 24-31
+	// Individual flags are already included in SecurityMode (bits 8-15)
+	// bit 8: MCCEnabled, bit 13: DebugFW, bit 14: SignedFW, bit 15: SecureFW
 	
 	return result
 }

@@ -89,18 +89,39 @@ func (c *CRCCalculator) CalculateHardwareCRC(data []byte) uint16 {
 // data: byte array containing the data
 // sizeInDwords: number of 32-bit words to process
 func (c *CRCCalculator) CalculateImageCRC(data []byte, sizeInDwords int) uint16 {
-	crc := uint16(0xFFFF)
+	// Special case for zero-length data
+	if sizeInDwords == 0 {
+		// Based on mstflint investigation, CalcImageCRC(NULL, 0) returns 0x955 (2389)
+		return 0x955
+	}
 	
-	// Process each dword
+	// Create a copy of data to avoid modifying the original
+	dataCopy := make([]byte, sizeInDwords*4)
+	copy(dataCopy, data)
+	
+	// Convert from big-endian to host-endian (mstflint uses TOCPUn)
 	for i := 0; i < sizeInDwords; i++ {
 		offset := i * 4
-		if offset+4 > len(data) {
-			break
-		}
+		// Read big-endian dword
+		word := uint32(dataCopy[offset])<<24 | uint32(dataCopy[offset+1])<<16 | 
+			uint32(dataCopy[offset+2])<<8 | uint32(dataCopy[offset+3])
 		
-		// Get 32-bit word in big-endian
-		word := uint32(data[offset])<<24 | uint32(data[offset+1])<<16 | 
-			uint32(data[offset+2])<<8 | uint32(data[offset+3])
+		// Write back in host-endian (little-endian on x86)
+		dataCopy[offset] = byte(word)
+		dataCopy[offset+1] = byte(word >> 8)
+		dataCopy[offset+2] = byte(word >> 16)
+		dataCopy[offset+3] = byte(word >> 24)
+	}
+	
+	crc := uint16(0xFFFF)
+	
+	// Process each dword in host-endian format
+	for i := 0; i < sizeInDwords; i++ {
+		offset := i * 4
+		
+		// Get 32-bit word in host-endian (little-endian)
+		word := uint32(dataCopy[offset]) | uint32(dataCopy[offset+1])<<8 | 
+			uint32(dataCopy[offset+2])<<16 | uint32(dataCopy[offset+3])<<24
 		
 		// Process each bit of the 32-bit word (matches mstflint's Crc16::add)
 		for j := 0; j < 32; j++ {

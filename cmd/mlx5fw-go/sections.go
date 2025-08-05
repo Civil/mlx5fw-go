@@ -22,7 +22,7 @@ type SectionDisplay struct {
 	Size         uint32
 	Name         string
 	Status       string
-	Section      *interfaces.Section
+	Section      interfaces.SectionReader
 	IsHWPointer  bool
 	IsHeader     bool
 }
@@ -68,7 +68,7 @@ type JSONOutput struct {
 	Sections           []JSONSection `json:"Sections"`
 }
 
-func displaySections(filePath string, format types.FirmwareFormat, sections map[uint16][]*interfaces.Section, parser *fs4.Parser, showContent bool, outputFormat string) error {
+func displaySections(filePath string, format types.FirmwareFormat, sections map[uint16][]interfaces.CompleteSectionInterface, parser *fs4.Parser, showContent bool, outputFormat string) error {
 	// If JSON output is requested, we'll collect all sections first
 	if outputFormat == "json" {
 		// Collect all sections and convert to JSON format
@@ -78,11 +78,11 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 		for _, sectionList := range sections {
 			for _, section := range sectionList {
 				// Get section type name
-				typeName := GetSectionTypeName(section)
+				typeName := section.TypeName()
 				
 				// Convert CRC type to string
 				var crcTypeName string
-				switch section.CRCType {
+				switch section.CRCType() {
 				case types.CRCNone:
 					crcTypeName = "CRC_NONE"
 				case types.CRCInITOCEntry:
@@ -90,11 +90,11 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 				case types.CRCInSection:
 					crcTypeName = "CRC_IN_SECTION"
 				default:
-					crcTypeName = fmt.Sprintf("UNKNOWN_%d", section.CRCType)
+					crcTypeName = fmt.Sprintf("UNKNOWN_%d", section.CRCType())
 				}
 				
 				// Verify section and get status
-				status, err := parser.VerifySection(section)
+				status, err := parser.VerifySectionNew(section)
 				if err != nil {
 					logger.Warn("Failed to verify section", zap.Error(err))
 					status = "ERROR"
@@ -110,13 +110,13 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 				
 				jsonSection := JSONSection{
 					Type:               typeName,
-					StartAddress:       section.Offset,
-					EndAddress:         section.Offset + uint64(section.Size) - 1,
-					Size:               section.Size,
+					StartAddress:       section.Offset(),
+					EndAddress:         section.Offset() + uint64(section.Size()) - 1,
+					Size:               section.Size(),
 					CRCType:            crcTypeName,
-					CRC:                section.CRC,
-					IsEncrypted:        section.IsEncrypted,
-					IsDeviceData:       section.IsDeviceData,
+					CRC:                0, // CRC is not exposed in the interface
+					IsEncrypted:        section.IsEncrypted(),
+					IsDeviceData:       section.IsDeviceData(),
 					VerificationStatus: status,
 				}
 				
@@ -211,30 +211,35 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 	})
 	
 	// Add parsed sections
-	for _, sectionList := range sections {
+	for sectionType, sectionList := range sections {
 		for _, section := range sectionList {
+			// Debug logging for HASHES_TABLE
+			if section.TypeName() == "HASHES_TABLE" {
+				logger.Debug("Processing HASHES_TABLE section in display",
+					zap.Uint16("section_type", sectionType),
+					zap.Uint64("offset", section.Offset()),
+					zap.Uint32("size", section.Size()),
+					zap.String("offset_hex", fmt.Sprintf("0x%x", section.Offset())),
+					zap.String("size_hex", fmt.Sprintf("0x%x", section.Size())),
+					zap.String("crc_type", section.CRCType().String()),
+					zap.Bool("from_hw_pointer", section.IsFromHWPointer()))
+			}
+			
 			// Verify section
-			status, err := parser.VerifySection(section)
+			status, err := parser.VerifySectionNew(section)
 			if err != nil {
 				logger.Warn("Failed to verify section", zap.Error(err))
 				status = "ERROR"
 			}
 			
-			name := GetSectionTypeName(section)
+			name := section.TypeName()
 			
 			// Calculate display addresses
-			// For sections with CRC_IN_SECTION, mstflint shows the end address
-			// excluding the 4-byte CRC at the end
-			endAddr := section.Offset + uint64(section.Size) - 1
-			displaySize := section.Size
-			if section.CRCType == types.CRCInSection && section.Size >= 4 {
-				// Exclude CRC from displayed end address
-				endAddr -= 4
-				displaySize -= 4
-			}
+			endAddr := section.Offset() + uint64(section.Size()) - 1
+			displaySize := section.Size()
 			
 			displaySections = append(displaySections, SectionDisplay{
-				StartAddr: section.Offset,
+				StartAddr: section.Offset(),
 				EndAddr:   endAddr,
 				Size:      displaySize,
 				Name:      name,

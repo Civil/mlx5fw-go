@@ -155,15 +155,12 @@ type VersionVectorAnnotated struct {
 	Reserved4         ResetVersionAnnotated      `offset:"0x24"` // offset 0x24
 	Reserved5         ResetVersionAnnotated      `offset:"0x28"` // offset 0x28
 	Reserved6         ResetVersionAnnotated      `offset:"0x2c"` // offset 0x2c
+	Reserved7         ResetVersionAnnotated      `offset:"0x30"` // offset 0x30 - total 52 bytes
 }
 
 // Unmarshal unmarshals binary data
 func (v *VersionVectorAnnotated) Unmarshal(data []byte) error {
-	annot, err := annotations.ParseStruct(reflect.TypeOf(*v))
-	if err != nil {
-		return err
-	}
-	return annotations.Unmarshal(data, v, annot)
+	return annotations.UnmarshalStruct(data, v)
 }
 
 // Marshal marshals to binary data
@@ -190,6 +187,7 @@ func (v *VersionVectorAnnotated) FromAnnotated() *VersionVector {
 		Reserved4:         *v.Reserved4.FromAnnotated(),
 		Reserved5:         *v.Reserved5.FromAnnotated(),
 		Reserved6:         *v.Reserved6.FromAnnotated(),
+		Reserved7:         *v.Reserved7.FromAnnotated(),
 	}
 }
 
@@ -208,22 +206,18 @@ func (v *VersionVector) ToAnnotated() *VersionVectorAnnotated {
 		Reserved4:         *v.Reserved4.ToAnnotated(),
 		Reserved5:         *v.Reserved5.ToAnnotated(),
 		Reserved6:         *v.Reserved6.ToAnnotated(),
+		Reserved7:         *v.Reserved7.ToAnnotated(),
 	}
 }
 
 // ResetInfoAnnotated represents the RESET_INFO section structure with annotations
 type ResetInfoAnnotated struct {
-	VersionVector VersionVectorAnnotated `offset:"0x0"`  // Version vector information (52 bytes)
-	Reserved      [204]uint8            `offset:"0x34"` // Padding to 256 bytes total
+	Data [256]uint8 `offset:"0x0"` // Full 256-byte section
 }
 
 // Unmarshal unmarshals binary data
 func (r *ResetInfoAnnotated) Unmarshal(data []byte) error {
-	annot, err := annotations.ParseStruct(reflect.TypeOf(*r))
-	if err != nil {
-		return err
-	}
-	return annotations.Unmarshal(data, r, annot)
+	return annotations.UnmarshalStruct(data, r)
 }
 
 // Marshal marshals to binary data
@@ -261,18 +255,32 @@ func (r *ResetInfoAnnotated) MarshalWithReserved() ([]byte, error) {
 
 // FromAnnotated converts from annotated to legacy format
 func (r *ResetInfoAnnotated) FromAnnotated() *ResetInfo {
+	// Parse the VersionVector from the first 52 bytes
+	vv := &VersionVectorAnnotated{}
+	_ = vv.Unmarshal(r.Data[:52])
+	
+	// Copy reserved bytes
+	var reserved [204]uint8
+	copy(reserved[:], r.Data[52:])
+	
 	return &ResetInfo{
-		VersionVector: *r.VersionVector.FromAnnotated(),
-		Reserved:      r.Reserved,
+		VersionVector: *vv.FromAnnotated(),
+		Reserved:      reserved,
 	}
 }
 
 // ToAnnotated converts ResetInfo to annotated format
 func (r *ResetInfo) ToAnnotated() *ResetInfoAnnotated {
-	return &ResetInfoAnnotated{
-		VersionVector: *r.VersionVector.ToAnnotated(),
-		Reserved:      r.Reserved,
-	}
+	result := &ResetInfoAnnotated{}
+	
+	// Marshal VersionVector to first 52 bytes
+	vvData, _ := r.VersionVector.ToAnnotated().Marshal()
+	copy(result.Data[:52], vvData)
+	
+	// Copy reserved bytes
+	copy(result.Data[52:], r.Reserved[:])
+	
+	return result
 }
 
 // HMACDigestAnnotated represents the HMAC_DIGEST section with annotations
@@ -584,9 +592,9 @@ func (c *CRDumpMaskData) ToAnnotated() *CRDumpMaskDataAnnotated {
 
 // ForbiddenVersionsAnnotated represents the FORBIDDEN_VERSIONS section with annotations
 type ForbiddenVersionsAnnotated struct {
-	Count    uint32   `offset:"byte:0,endian:be"`                           // Number of forbidden versions
-	Reserved uint32   `offset:"byte:4,endian:be,reserved:true"`             // Reserved for alignment
-	Versions []uint32 `offset:"byte:8,endian:be,list_size:Count"`          // List of forbidden version numbers
+	Count    uint32   `offset:"byte:0,endian:be" json:"count"`                           // Number of forbidden versions
+	Reserved uint32   `offset:"byte:4,endian:be,reserved:true" json:"reserved"`             // Reserved for alignment
+	Versions []uint32 `offset:"byte:8,endian:be,list_size:Count" json:"versions,omitempty"`          // List of forbidden version numbers
 }
 
 // Unmarshal unmarshals binary data
@@ -924,7 +932,7 @@ type DigitalCertPtrAnnotated struct {
 	CertType   uint32    `offset:"0x0,endian:be"`      // Certificate type
 	CertOffset uint32    `offset:"0x4,endian:be"`      // Offset to certificate
 	CertSize   uint32    `offset:"0x8,endian:be"`      // Certificate size
-	Reserved   [52]uint8 `offset:"0xc,reserved:true"`  // Reserved
+	Reserved   [28]uint8 `offset:"0xc,reserved:true"`  // Reserved (28 bytes to make total 40)
 }
 
 // Unmarshal unmarshals binary data

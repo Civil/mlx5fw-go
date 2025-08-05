@@ -72,11 +72,11 @@ func runReplaceSectionCommandV4(cmd *cobra.Command, args []string, sectionName s
 
 	// Find the target section
 	allSections := fwParser.GetSections()
-	var targetSection *interfaces.Section
+	var targetSection interfaces.SectionInterface
 
 	for _, sections := range allSections {
 		for idx, section := range sections {
-			sectionTypeName := types.GetSectionTypeName(section.Type)
+			sectionTypeName := types.GetSectionTypeName(section.Type())
 			if sectionTypeName == sectionName && (sectionID == -1 || idx == sectionID) {
 				targetSection = section
 				break
@@ -93,12 +93,12 @@ func runReplaceSectionCommandV4(cmd *cobra.Command, args []string, sectionName s
 
 	logger.Info("Found target section",
 		zap.String("name", sectionName),
-		zap.Uint64("offset", targetSection.Offset),
-		zap.Uint32("size", targetSection.Size),
+		zap.Uint64("offset", targetSection.Offset()),
+		zap.Uint32("size", targetSection.Size()),
 		zap.Uint32("newSize", uint32(len(replacementData))))
 
 	// Create section replacer with parser context
-	replacer := section.NewReplacer(fwParser, firmwareData, logger)
+	replacer := section.NewReplacerNew(fwParser, firmwareData, logger)
 
 	// Replace the section
 	newFirmwareData, err := replacer.ReplaceSection(targetSection, replacementData)

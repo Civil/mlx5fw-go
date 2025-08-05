@@ -114,10 +114,10 @@ func TestReplaceSectionIntegration(t *testing.T) {
 	found := false
 	for _, sections := range allSections {
 		for _, section := range sections {
-			if types.GetSectionTypeName(section.Type) == "DBG_FW_INI" {
+			if types.GetSectionTypeName(section.Type()) == "DBG_FW_INI" {
 				found = true
 				// Verify size matches replacement
-				assert.Equal(t, uint32(len(replacementContent)), section.Size)
+				assert.Equal(t, uint32(len(replacementContent)), section.Size())
 				break
 			}
 		}

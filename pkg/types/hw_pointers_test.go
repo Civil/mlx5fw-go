@@ -189,8 +189,8 @@ func TestFS4HWPointers_Unmarshal_Extended(t *testing.T) {
 			}
 			
 			if err == nil {
-				// Convert to legacy format for comparison
-				hwp := hwpAnnotated.FromAnnotated()
+				// Use the annotated version directly (no conversion needed with type aliases)
+				hwp := hwpAnnotated
 				
 				if hwp.Boot2Ptr.Ptr != tt.wantBoot2 {
 					t.Errorf("Boot2Ptr.Ptr = 0x%X, want 0x%X", hwp.Boot2Ptr.Ptr, tt.wantBoot2)
@@ -266,8 +266,8 @@ func TestHWPointerEntry_Fields(t *testing.T) {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
 
-			// Convert to legacy format for comparison
-			hwptr := hwptrAnnotated.FromAnnotated()
+			// Use the annotated version directly (no conversion needed with type aliases)
+			hwptr := hwptrAnnotated
 
 			if hwptr.Ptr != tt.wantPtr {
 				t.Errorf("Ptr = 0x%X, want 0x%X", hwptr.Ptr, tt.wantPtr)

@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 	"github.com/Civil/mlx5fw-go/pkg/types"
+	"github.com/Civil/mlx5fw-go/pkg/types/extracted"
 	types_sections "github.com/Civil/mlx5fw-go/pkg/types/sections"
 )
 
@@ -49,8 +51,8 @@ func (e *Extractor) Extract() error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Get new sections
-	sections := e.parser.GetSectionsNew()
+	// Get sections
+	sections := e.parser.GetSections()
 	
 	// Extract sections and get filename mapping
 	sectionFileMap, err := e.extractSections(sections)
@@ -67,7 +69,7 @@ func (e *Extractor) Extract() error {
 	return e.extractGapsAndUnallocatedData()
 }
 
-func (e *Extractor) extractSections(sections map[uint16][]interfaces.SectionInterface) (map[uint64]string, error) {
+func (e *Extractor) extractSections(sections map[uint16][]interfaces.CompleteSectionInterface) (map[uint64]string, error) {
 	extractedCount := 0
 	// Map to store CRC values for sections
 	sectionCRCs := make(map[uint64]uint32) // key: offset, value: CRC
@@ -91,9 +93,6 @@ func (e *Extractor) extractSections(sections map[uint16][]interfaces.SectionInte
 			}
 			
 			filePath := filepath.Join(e.options.OutputDir, fileName)
-			
-			// Store filename in map
-			sectionFileMap[section.Offset()] = fileName
 			
 			e.logger.Info("Extracting section",
 				zap.String("type", typeName),
@@ -164,24 +163,23 @@ func (e *Extractor) extractSections(sections map[uint16][]interfaces.SectionInte
 			
 			// Always export JSON for parsed sections (JSON is the source of truth)
 			jsonPath := strings.TrimSuffix(filePath, ".bin") + ".json"
+			jsonData, err := json.MarshalIndent(section, "", "  ")
+			if err != nil {
+				e.logger.Warn("Failed to marshal section to JSON",
+					zap.String("type", typeName),
+					zap.Error(err))
+			}
+			
 			jsonExported := false
-			var jsonData []byte
-			var err error
-			if jsonData, err = section.MarshalJSON(); err == nil {
-				// Pretty print JSON
-				var prettyJSON map[string]interface{}
-				if err := json.Unmarshal(jsonData, &prettyJSON); err == nil {
-					if prettyData, err := json.MarshalIndent(prettyJSON, "", "  "); err == nil {
-						if err := os.WriteFile(jsonPath, prettyData, 0644); err != nil {
-							e.logger.Warn("Failed to write JSON",
-								zap.String("file", jsonPath),
-								zap.Error(err))
-						} else {
-							e.logger.Info("Exported JSON data",
-								zap.String("file", jsonPath))
-							jsonExported = true
-						}
-					}
+			if err == nil {
+				if err := os.WriteFile(jsonPath, jsonData, 0644); err != nil {
+					e.logger.Warn("Failed to write JSON",
+						zap.String("file", jsonPath),
+						zap.Error(err))
+				} else {
+					e.logger.Info("Exported JSON data",
+						zap.String("file", jsonPath))
+					jsonExported = true
 				}
 			}
 			
@@ -210,37 +208,32 @@ func (e *Extractor) extractSections(sections map[uint16][]interfaces.SectionInte
 			// 1. KeepBinary flag is set (user wants both JSON and binary)
 			// 2. Firmware is encrypted (binary data must be preserved exactly)
 			// 3. JSON export failed
-			// 4. Section doesn't have meaningful parsed data (only has basic metadata)
-			shouldWriteBinary := e.options.KeepBinary || 
-				e.parser.IsEncrypted() || 
-				!jsonExported
+			// 4. Section has raw data flag (unparsed sections)
+			shouldWriteBinary := e.options.KeepBinary || e.parser.IsEncrypted() || !jsonExported
 			
-			// Check if JSON has meaningful parsed data beyond basic metadata
+			e.logger.Debug("Binary write decision initial",
+				zap.String("type", typeName),
+				zap.Bool("shouldWriteBinary", shouldWriteBinary),
+				zap.Bool("jsonExported", jsonExported),
+				zap.Bool("keepBinary", e.options.KeepBinary),
+				zap.Bool("isEncrypted", e.parser.IsEncrypted()))
+			
 			if jsonExported && !shouldWriteBinary {
-				// Check if JSON contains only basic metadata fields
-				var jsonCheck map[string]interface{}
-				if err := json.Unmarshal(jsonData, &jsonCheck); err == nil {
-					// Count non-metadata fields
-					parsedFields := 0
-					hasRawDataFlag := false
-					for key, value := range jsonCheck {
-						switch key {
-						case "type", "type_name", "offset", "size", "crc_type", 
-						     "is_encrypted", "is_device_data", "data_size":
-							// These are basic metadata fields
-						case "has_raw_data":
-							// Check if has_raw_data flag is set
-							if v, ok := value.(bool); ok && v {
-								hasRawDataFlag = true
-							}
-						default:
-							parsedFields++
-						}
-					}
-					// If only metadata fields exist or has_raw_data flag is set, we need the binary
-					if parsedFields == 0 || hasRawDataFlag {
-						shouldWriteBinary = true
-						e.logger.Debug("Section has no parsed fields or has raw data flag, keeping binary",
+				// Check if section has raw data flag
+				var sectionMeta struct {
+					HasRawData bool `json:"has_raw_data"`
+				}
+				if err := json.Unmarshal(jsonData, &sectionMeta); err != nil {
+					e.logger.Debug("Failed to unmarshal section metadata",
+						zap.String("type", typeName),
+						zap.Error(err))
+				} else {
+					e.logger.Debug("Unmarshaled section metadata",
+						zap.String("type", typeName),
+						zap.Bool("has_raw_data", sectionMeta.HasRawData))
+					shouldWriteBinary = sectionMeta.HasRawData
+					if shouldWriteBinary {
+						e.logger.Debug("Section has raw data flag, keeping binary",
 							zap.String("type", typeName))
 					}
 				}
@@ -254,6 +247,9 @@ func (e *Extractor) extractSections(sections map[uint16][]interfaces.SectionInte
 					zap.String("type", typeName),
 					zap.String("file", fileName))
 			}
+			
+			// Store filename in map only after successful extraction
+			sectionFileMap[section.Offset()] = fileName
 			
 			extractedCount++
 		}
@@ -270,8 +266,8 @@ func (e *Extractor) extractGapsAndUnallocatedData() error {
 	}
 	
 	// Get all sections sorted by offset
-	sections := e.parser.GetSectionsNew()
-	allSections := make([]interfaces.SectionInterface, 0)
+	sections := e.parser.GetSections()
+	allSections := make([]interfaces.CompleteSectionInterface, 0)
 	for _, sectionList := range sections {
 		allSections = append(allSections, sectionList...)
 	}
@@ -456,7 +452,7 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 	magicOffset := e.parser.GetMagicOffset()
 	
 	// Get hardware pointers
-	hwPointersData, hwPointers, err := e.parser.GetHWPointersRaw()
+	_, fs4HwPointers, err := e.parser.GetHWPointersRaw()
 	if err != nil {
 		e.logger.Warn("Failed to get HW pointers", zap.Error(err))
 	}
@@ -472,45 +468,48 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 		e.logger.Warn("Failed to get DTOC raw data", zap.Error(err))
 	}
 	
-	metadata := map[string]interface{}{
-		"format": "FS4",
-		"firmware_file": map[string]interface{}{
-			"original_size": fileInfo.Size,
-			"sha256_hash": fileInfo.SHA256,
+	// Build structured metadata
+	metadata := &extracted.FirmwareMetadata{
+		Format: "FS4",
+		Firmware: extracted.FirmwareFileInfo{
+			OriginalSize: uint64(fileInfo.Size),
+			SHA256Hash:   fileInfo.SHA256,
 		},
-		"magic_pattern": map[string]interface{}{
-			"offset": magicOffset,
-			"pattern": fmt.Sprintf("0x%016x", types.MagicPattern),
-			"search_offsets": types.MagicSearchOffsets,
+		Magic: extracted.MagicInfo{
+			Offset: magicOffset,
+			Value:  fmt.Sprintf("0x%016x", types.MagicPattern),
 		},
-		"hw_pointers": map[string]interface{}{
-			"offset": magicOffset + types.HWPointersOffsetFromMagic,
-			"raw_data": hwPointersData,
-			"parsed": hwPointers,
+		HWPointers: extracted.HWPointersInfo{
+			Offset: magicOffset + types.HWPointersOffsetFromMagic,
 		},
-		"itoc": map[string]interface{}{
-			"address": e.parser.GetITOCAddress(),
-			"header_valid": e.parser.IsITOCHeaderValid(),
-			"raw_header": itocRawData,
+		ITOC: extracted.TOCInfo{
+			Address:     e.parser.GetITOCAddress(),
+			HeaderValid: e.parser.IsITOCHeaderValid(),
+			RawHeader:   base64.StdEncoding.EncodeToString(itocRawData),
 		},
-		"dtoc": map[string]interface{}{
-			"address": e.parser.GetDTOCAddress(),
-			"header_valid": e.parser.IsDTOCHeaderValid(),
-			"raw_header": dtocRawData,
+		DTOC: extracted.TOCInfo{
+			Address:     e.parser.GetDTOCAddress(),
+			HeaderValid: e.parser.IsDTOCHeaderValid(),
+			RawHeader:   base64.StdEncoding.EncodeToString(dtocRawData),
 		},
-		"is_encrypted": e.parser.IsEncrypted(),
+		IsEncrypted: e.parser.IsEncrypted(),
+	}
+	
+	// Set HW pointers based on type
+	if fs4HwPointers != nil {
+		metadata.HWPointers.FS4 = fs4HwPointers
 	}
 	
 	// Add detailed section information
-	sections := e.parser.GetSectionsNew()
-	sectionSummary := make([]map[string]interface{}, 0)
+	sections := e.parser.GetSections()
+	sectionMetadata := make([]extracted.SectionMetadata, 0)
 	
 	// Track memory layout
-	memoryLayout := make([]map[string]interface{}, 0)
+	memoryLayout := make([]extracted.MemorySegment, 0)
 	lastEnd := uint64(0)
 	
 	// Get all sections sorted by offset
-	allSections := make([]interfaces.SectionInterface, 0)
+	allSections := make([]interfaces.CompleteSectionInterface, 0)
 	for _, sectionList := range sections {
 		allSections = append(allSections, sectionList...)
 	}
@@ -525,11 +524,12 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 		// Check for gap before this section
 		if section.Offset() > lastEnd {
 			gapSize := section.Offset() - lastEnd
-			memoryLayout = append(memoryLayout, map[string]interface{}{
-				"type": "gap",
-				"start": lastEnd,
-				"end": section.Offset(),
-				"size": gapSize,
+			memoryLayout = append(memoryLayout, extracted.MemorySegment{
+				StartOffset: lastEnd,
+				EndOffset:   section.Offset(),
+				Size:        gapSize,
+				Type:        "gap",
+				Description: fmt.Sprintf("Gap between sections"),
 			})
 		}
 		
@@ -545,9 +545,10 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 			// Try to get CRC from raw data if available
 			if rawData := section.GetRawData(); rawData != nil && len(rawData) >= 4 {
 				// For IN_SECTION CRCs, the format is:
-				// - 16-bit CRC in upper 16 bits (bytes 0-1) 
+				// - 16-bit CRC in upper 16 bits (bytes 0-1) of last 4 bytes
 				// - Lower 16 bits are 0 (bytes 2-3)
-				originalCRC = uint32(rawData[len(rawData)-4])<<8 | uint32(rawData[len(rawData)-3])
+				// Extract the 16-bit CRC from the first 2 bytes of the last dword
+				originalCRC = uint32(binary.BigEndian.Uint16(rawData[len(rawData)-4:]))
 				e.logger.Debug("Extracted CRC from section",
 					zap.String("type", section.TypeName()),
 					zap.Uint32("crc", originalCRC),
@@ -555,44 +556,37 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 			}
 		}
 		
-		summary := map[string]interface{}{
-			"type": section.Type(),
-			"type_name": section.TypeName(),
-			"offset": section.Offset(),
-			"size": section.Size(),
-			"original_size_with_crc": originalSize,
-			"crc_type": section.CRCType().String(),
-			"crc_value": originalCRC,
-			"is_encrypted": section.IsEncrypted(),
-			"is_device_data": section.IsDeviceData(),
-			"is_from_hw_pointer": section.IsFromHWPointer(),
-			"index": i,
+		// Create section metadata
+		secMeta := extracted.SectionMetadata{
+			BaseSection:  &interfaces.BaseSection{
+				SectionType:     types.SectionType(section.Type()),
+				SectionOffset:   section.Offset(),
+				SectionSize:     section.Size(),
+				SectionCRCType:  section.CRCType(),
+				EncryptedFlag:   section.IsEncrypted(),
+				DeviceDataFlag:  section.IsDeviceData(),
+				FromHWPointerFlag: section.IsFromHWPointer(),
+				HasRawData:      false, // Will be set based on parsing status
+			},
+			OriginalSize: originalSize,
+			CRCValue:     originalCRC,
+			Index:        i,
 		}
 		
 		// Add filename if available
 		if fileName, ok := sectionFileMap[section.Offset()]; ok {
-			summary["file_name"] = fileName
+			secMeta.FileName = fileName
 		}
 		
-		// Add ITOC entry info if available
-		if entry := section.GetITOCEntry(); entry != nil {
-			summary["itoc_entry"] = map[string]interface{}{
-				"type": entry.Type,
-				"flash_addr": entry.GetFlashAddr(),
-				"section_crc": entry.SectionCRC,
-				"encrypted": entry.Encrypted,
-			}
-		}
-		
-		sectionSummary = append(sectionSummary, summary)
+		sectionMetadata = append(sectionMetadata, secMeta)
 		
 		// Add section to memory layout
-		memoryLayout = append(memoryLayout, map[string]interface{}{
-			"type": "section",
-			"section_type": section.TypeName(),
-			"start": section.Offset(),
-			"end": section.Offset() + uint64(originalSize),
-			"size": originalSize,
+		memoryLayout = append(memoryLayout, extracted.MemorySegment{
+			StartOffset: section.Offset(),
+			EndOffset:   section.Offset() + uint64(originalSize),
+			Size:        uint64(originalSize),
+			Type:        "section",
+			Description: section.TypeName(),
 		})
 		
 		lastEnd = section.Offset() + uint64(originalSize)
@@ -600,32 +594,39 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 	
 	// Check for trailing gap
 	if fileInfo.Size > 0 && lastEnd < uint64(fileInfo.Size) {
-		memoryLayout = append(memoryLayout, map[string]interface{}{
-			"type": "gap",
-			"start": lastEnd,
-			"end": fileInfo.Size,
-			"size": uint64(fileInfo.Size) - lastEnd,
+		memoryLayout = append(memoryLayout, extracted.MemorySegment{
+			StartOffset: lastEnd,
+			EndOffset:   uint64(fileInfo.Size),
+			Size:        uint64(fileInfo.Size) - lastEnd,
+			Type:        "gap",
+			Description: "Trailing gap",
 		})
 	}
 	
-	metadata["sections"] = sectionSummary
-	metadata["memory_layout"] = memoryLayout
+	metadata.Sections = sectionMetadata
+	metadata.MemoryLayout = memoryLayout
 	
 	// Add CRC algorithm info
-	metadata["crc_info"] = map[string]interface{}{
-		"algorithms": map[string]string{
-			"hardware": "CRC16-ARC (calc_hw_crc)",
-			"software": "CRC16-XMODEM (polynomial 0x100b)",
+	metadata.CRCInfo = extracted.CRCInfo{
+		Algorithms: struct {
+			Hardware string `json:"hardware"`
+			Software string `json:"software"`
+		}{
+			Hardware: "CRC16-ARC (calc_hw_crc)",
+			Software: "CRC16-XMODEM (polynomial 0x100b)",
 		},
-		"note": "CRC algorithm is determined by section type - HW_PTR uses hardware CRC, all others use software CRC",
+		Note: "CRC algorithm is determined by section type - HW_PTR uses hardware CRC, all others use software CRC",
 	}
 	
 	// Add firmware boundaries
-	metadata["boundaries"] = map[string]interface{}{
-		"image_start": 0,
-		"image_end": fileInfo.Size,
-		"sector_size": types.SectionAlignmentSector,
+	metadata.Boundaries = extracted.FirmwareBoundaries{
+		ImageStart: 0,
+		ImageEnd:   uint64(fileInfo.Size),
+		SectorSize: types.SectionAlignmentSector,
 	}
+	
+	// Add gaps information
+	metadata.Gaps = e.buildGapInfo(memoryLayout)
 	
 	// Write metadata
 	metadataPath := filepath.Join(e.options.OutputDir, "firmware_metadata.json")
@@ -639,4 +640,50 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 	}
 	
 	return nil
+}
+
+func (e *Extractor) buildGapInfo(memoryLayout []extracted.MemorySegment) []extracted.GapInfo {
+	gaps := make([]extracted.GapInfo, 0)
+	gapIndex := 0
+	gapsDir := filepath.Join(e.options.OutputDir, "gaps")
+	
+	for _, segment := range memoryLayout {
+		if segment.Type == "gap" {
+			// Check if this gap was saved as uniform by looking for .meta file
+			isUniform := false
+			fillByte := uint8(0xFF) // Default
+			
+			// Check if a .meta file exists for this gap
+			gapFileName := fmt.Sprintf("gap_%03d_0x%08x_0x%08x", gapIndex, segment.StartOffset, segment.EndOffset)
+			if segment.EndOffset == 0 || segment.Description == "Trailing gap" {
+				gapFileName = fmt.Sprintf("gap_%03d_0x%08x_EOF", gapIndex, segment.StartOffset)
+			}
+			metaPath := filepath.Join(gapsDir, gapFileName + ".meta")
+			
+			if metaData, err := os.ReadFile(metaPath); err == nil {
+				// Parse metadata to get actual values
+				lines := strings.Split(string(metaData), "\n")
+				for _, line := range lines {
+					if strings.HasPrefix(line, "fill=") {
+						var fill uint32
+						fmt.Sscanf(line, "fill=0x%02x", &fill)
+						fillByte = byte(fill)
+						isUniform = true
+					}
+				}
+			}
+			
+			gaps = append(gaps, extracted.GapInfo{
+				Index:       gapIndex,
+				StartOffset: segment.StartOffset,
+				EndOffset:   segment.EndOffset,
+				Size:        segment.Size,
+				FillByte:    fillByte,
+				IsUniform:   isUniform,
+			})
+			gapIndex++
+		}
+	}
+	
+	return gaps
 }

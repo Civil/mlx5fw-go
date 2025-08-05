@@ -34,7 +34,7 @@ func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
 	sections := fs4Parser.GetSections()
 	
 	// Look for DBG_FW_INI section (type 0x30)
-	var dbgIniSection *interfaces.Section
+	var dbgIniSection interfaces.SectionInterface
 	if sectionList, ok := sections[types.SectionTypeDbgFWINI]; ok && len(sectionList) > 0 {
 		dbgIniSection = sectionList[0] // Take the first one if multiple exist
 	}
@@ -44,11 +44,11 @@ func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	logger.Info("Found DBG_FW_INI section",
-		zap.Uint64("offset", dbgIniSection.Offset),
-		zap.Uint32("size", dbgIniSection.Size))
+		zap.Uint64("offset", dbgIniSection.Offset()),
+		zap.Uint32("size", dbgIniSection.Size()))
 
 	// Read section data
-	sectionData, err := ctx.Reader.ReadSection(int64(dbgIniSection.Offset), dbgIniSection.Size)
+	sectionData, err := ctx.Reader.ReadSection(int64(dbgIniSection.Offset()), dbgIniSection.Size())
 	if err != nil {
 		return fmt.Errorf("failed to read DBG_FW_INI section: %w", err)
 	}

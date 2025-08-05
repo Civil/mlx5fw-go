@@ -1,6 +1,9 @@
 package types
 
 import (
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"reflect"
 	
 	"github.com/Civil/mlx5fw-go/pkg/annotations"
@@ -9,43 +12,43 @@ import (
 // ImageSignatureAnnotated represents the image signature structure using annotations
 // Based on image_layout_image_signature from mstflint
 type ImageSignatureAnnotated struct {
-	SignatureType uint32 `offset:"byte:0,endian:be"`  // offset 0x0
-	Signature     [256]uint8 `offset:"byte:4"`         // offset 0x4
+	SignatureType uint32 `offset:"byte:0,endian:be" json:"signature_type"`  // offset 0x0
+	Signature     [256]uint8 `offset:"byte:4" json:"-"`                    // offset 0x4 - Handled separately in MarshalJSON/UnmarshalJSON
 }
 
 // ImageSignature2Annotated represents the extended image signature structure using annotations
 // Based on image_layout_image_signature_2 from mstflint
 type ImageSignature2Annotated struct {
-	SignatureType uint32 `offset:"byte:0,endian:be"`  // offset 0x0
-	Signature     [512]uint8 `offset:"byte:4"`         // offset 0x4
+	SignatureType uint32 `offset:"byte:0,endian:be" json:"signature_type"`  // offset 0x0
+	Signature     [512]uint8 `offset:"byte:4" json:"-"`                    // offset 0x4 - Handled separately in MarshalJSON/UnmarshalJSON
 }
 
 // PublicKeyAnnotated represents a public key structure using annotations
 // Based on image_layout_file_public_keys from mstflint
 type PublicKeyAnnotated struct {
-	Reserved uint32    `offset:"byte:0,endian:be,reserved:true"` // offset 0x0
-	UUID     [16]uint8 `offset:"byte:4"`                         // offset 0x4
-	Key      [256]uint8 `offset:"byte:20"`                       // offset 0x14 (20 decimal)
+	Reserved uint32    `offset:"byte:0,endian:be,reserved:true" json:"reserved"` // offset 0x0
+	UUID     [16]uint8 `offset:"byte:4" json:"-"`                              // offset 0x4 - Handled separately in MarshalJSON/UnmarshalJSON
+	Key      [256]uint8 `offset:"byte:20" json:"-"`                            // offset 0x14 (20 decimal) - Handled separately in MarshalJSON/UnmarshalJSON
 }
 
 // PublicKeysAnnotated represents an array of public keys using annotations
 // Based on image_layout_public_keys from mstflint
 type PublicKeysAnnotated struct {
-	Keys [8]PublicKeyAnnotated `offset:"byte:0"` // offset 0x0
+	Keys [8]PublicKeyAnnotated `offset:"byte:0" json:"keys"` // offset 0x0
 }
 
 // PublicKey2Annotated represents an extended public key structure using annotations
 // Based on image_layout_file_public_keys_2 from mstflint
 type PublicKey2Annotated struct {
-	Reserved uint32    `offset:"byte:0,endian:be,reserved:true"` // offset 0x0
-	UUID     [16]uint8 `offset:"byte:4"`                         // offset 0x4
-	Key      [512]uint8 `offset:"byte:20"`                       // offset 0x14 (20 decimal)
+	Reserved uint32    `offset:"byte:0,endian:be,reserved:true" json:"reserved"` // offset 0x0
+	UUID     [16]uint8 `offset:"byte:4" json:"-"`                              // offset 0x4 - Handled separately in MarshalJSON/UnmarshalJSON
+	Key      [512]uint8 `offset:"byte:20" json:"-"`                            // offset 0x14 (20 decimal) - Handled separately in MarshalJSON/UnmarshalJSON
 }
 
 // PublicKeys2Annotated represents an array of extended public keys using annotations
 // Based on image_layout_public_keys_2 from mstflint
 type PublicKeys2Annotated struct {
-	Keys [8]PublicKey2Annotated `offset:"byte:0"` // offset 0x0
+	Keys [8]PublicKey2Annotated `offset:"byte:0" json:"keys"` // offset 0x0
 }
 
 // ToolsAreaExtendedAnnotated represents the tools area structure using annotations
@@ -57,6 +60,160 @@ type ToolsAreaExtendedAnnotated struct {
 	TypeLength  uint32    `offset:"byte:12,endian:be"`             // offset 0xc
 	TypeData    [16]uint8 `offset:"byte:16"`                       // offset 0x10
 	Reserved    [32]uint8 `offset:"byte:32,reserved:true"`         // offset 0x20
+}
+
+// MarshalJSON implements json.Marshaler interface for ImageSignatureAnnotated
+func (s *ImageSignatureAnnotated) MarshalJSON() ([]byte, error) {
+	type Alias ImageSignatureAnnotated
+	return json.Marshal(&struct {
+		*Alias
+		Signature string `json:"signature"`
+	}{
+		Alias:     (*Alias)(s),
+		Signature: base64.StdEncoding.EncodeToString(s.Signature[:]),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface for ImageSignatureAnnotated
+func (s *ImageSignatureAnnotated) UnmarshalJSON(data []byte) error {
+	type Alias ImageSignatureAnnotated
+	aux := &struct {
+		*Alias
+		Signature string `json:"signature"`
+	}{
+		Alias: (*Alias)(s),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	sigData, err := base64.StdEncoding.DecodeString(aux.Signature)
+	if err != nil {
+		return err
+	}
+	copy(s.Signature[:], sigData)
+	
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler interface for ImageSignature2Annotated
+func (s *ImageSignature2Annotated) MarshalJSON() ([]byte, error) {
+	type Alias ImageSignature2Annotated
+	return json.Marshal(&struct {
+		*Alias
+		Signature string `json:"signature"`
+	}{
+		Alias:     (*Alias)(s),
+		Signature: base64.StdEncoding.EncodeToString(s.Signature[:]),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface for ImageSignature2Annotated
+func (s *ImageSignature2Annotated) UnmarshalJSON(data []byte) error {
+	type Alias ImageSignature2Annotated
+	aux := &struct {
+		*Alias
+		Signature string `json:"signature"`
+	}{
+		Alias: (*Alias)(s),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	sigData, err := base64.StdEncoding.DecodeString(aux.Signature)
+	if err != nil {
+		return err
+	}
+	copy(s.Signature[:], sigData)
+	
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler interface for PublicKeyAnnotated
+func (p *PublicKeyAnnotated) MarshalJSON() ([]byte, error) {
+	type Alias PublicKeyAnnotated
+	return json.Marshal(&struct {
+		*Alias
+		UUID string `json:"uuid"`
+		Key  string `json:"key"`
+	}{
+		Alias: (*Alias)(p),
+		UUID:  hex.EncodeToString(p.UUID[:]),
+		Key:   base64.StdEncoding.EncodeToString(p.Key[:]),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface for PublicKeyAnnotated
+func (p *PublicKeyAnnotated) UnmarshalJSON(data []byte) error {
+	type Alias PublicKeyAnnotated
+	aux := &struct {
+		*Alias
+		UUID string `json:"uuid"`
+		Key  string `json:"key"`
+	}{
+		Alias: (*Alias)(p),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	uuidData, err := hex.DecodeString(aux.UUID)
+	if err != nil {
+		return err
+	}
+	copy(p.UUID[:], uuidData)
+	
+	keyData, err := base64.StdEncoding.DecodeString(aux.Key)
+	if err != nil {
+		return err
+	}
+	copy(p.Key[:], keyData)
+	
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler interface for PublicKey2Annotated
+func (p *PublicKey2Annotated) MarshalJSON() ([]byte, error) {
+	type Alias PublicKey2Annotated
+	return json.Marshal(&struct {
+		*Alias
+		UUID string `json:"uuid"`
+		Key  string `json:"key"`
+	}{
+		Alias: (*Alias)(p),
+		UUID:  hex.EncodeToString(p.UUID[:]),
+		Key:   base64.StdEncoding.EncodeToString(p.Key[:]),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface for PublicKey2Annotated
+func (p *PublicKey2Annotated) UnmarshalJSON(data []byte) error {
+	type Alias PublicKey2Annotated
+	aux := &struct {
+		*Alias
+		UUID string `json:"uuid"`
+		Key  string `json:"key"`
+	}{
+		Alias: (*Alias)(p),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	uuidData, err := hex.DecodeString(aux.UUID)
+	if err != nil {
+		return err
+	}
+	copy(p.UUID[:], uuidData)
+	
+	keyData, err := base64.StdEncoding.DecodeString(aux.Key)
+	if err != nil {
+		return err
+	}
+	copy(p.Key[:], keyData)
+	
+	return nil
 }
 
 // Unmarshal methods
@@ -81,6 +238,16 @@ func (s *ImageSignature2Annotated) Marshal() ([]byte, error) {
 	return annotations.MarshalStruct(s)
 }
 
+// Unmarshal unmarshals binary data into PublicKeyAnnotated
+func (p *PublicKeyAnnotated) Unmarshal(data []byte) error {
+	return annotations.UnmarshalStruct(data, p)
+}
+
+// Marshal marshals PublicKeyAnnotated into binary data
+func (p *PublicKeyAnnotated) Marshal() ([]byte, error) {
+	return annotations.MarshalStruct(p)
+}
+
 // Unmarshal unmarshals binary data into PublicKeysAnnotated
 func (p *PublicKeysAnnotated) Unmarshal(data []byte) error {
 	return annotations.UnmarshalStruct(data, p)
@@ -101,6 +268,16 @@ func (p *PublicKeysAnnotated) MarshalWithReserved() ([]byte, error) {
 		IncludeReserved: true,
 	}
 	return annotations.MarshalWithOptions(p, annot, opts)
+}
+
+// Unmarshal unmarshals binary data into PublicKey2Annotated
+func (p *PublicKey2Annotated) Unmarshal(data []byte) error {
+	return annotations.UnmarshalStruct(data, p)
+}
+
+// Marshal marshals PublicKey2Annotated into binary data
+func (p *PublicKey2Annotated) Marshal() ([]byte, error) {
+	return annotations.MarshalStruct(p)
 }
 
 // Unmarshal unmarshals binary data into PublicKeys2Annotated
@@ -135,112 +312,3 @@ func (t *ToolsAreaExtendedAnnotated) Marshal() ([]byte, error) {
 	return annotations.MarshalStruct(t)
 }
 
-// Conversion methods for compatibility
-
-// ToAnnotated converts ImageSignature to ImageSignatureAnnotated
-func (s *ImageSignature) ToAnnotated() *ImageSignatureAnnotated {
-	return &ImageSignatureAnnotated{
-		SignatureType: s.SignatureType,
-		Signature:     s.Signature,
-	}
-}
-
-// FromAnnotated converts ImageSignatureAnnotated to ImageSignature
-func (s *ImageSignatureAnnotated) FromAnnotated() *ImageSignature {
-	return &ImageSignature{
-		SignatureType: s.SignatureType,
-		Signature:     s.Signature,
-	}
-}
-
-// ToAnnotated converts ImageSignature2 to ImageSignature2Annotated
-func (s *ImageSignature2) ToAnnotated() *ImageSignature2Annotated {
-	return &ImageSignature2Annotated{
-		SignatureType: s.SignatureType,
-		Signature:     s.Signature,
-	}
-}
-
-// FromAnnotated converts ImageSignature2Annotated to ImageSignature2
-func (s *ImageSignature2Annotated) FromAnnotated() *ImageSignature2 {
-	return &ImageSignature2{
-		SignatureType: s.SignatureType,
-		Signature:     s.Signature,
-	}
-}
-
-// ToAnnotated converts PublicKeys to PublicKeysAnnotated
-func (p *PublicKeys) ToAnnotated() *PublicKeysAnnotated {
-	annotated := &PublicKeysAnnotated{}
-	for i := range p.Keys {
-		annotated.Keys[i] = PublicKeyAnnotated{
-			Reserved: p.Keys[i].Reserved,
-			UUID:     p.Keys[i].UUID,
-			Key:      p.Keys[i].Key,
-		}
-	}
-	return annotated
-}
-
-// FromAnnotated converts PublicKeysAnnotated to PublicKeys
-func (p *PublicKeysAnnotated) FromAnnotated() *PublicKeys {
-	legacy := &PublicKeys{}
-	for i := range p.Keys {
-		legacy.Keys[i] = PublicKey{
-			Reserved: p.Keys[i].Reserved,
-			UUID:     p.Keys[i].UUID,
-			Key:      p.Keys[i].Key,
-		}
-	}
-	return legacy
-}
-
-// ToAnnotated converts PublicKeys2 to PublicKeys2Annotated
-func (p *PublicKeys2) ToAnnotated() *PublicKeys2Annotated {
-	annotated := &PublicKeys2Annotated{}
-	for i := range p.Keys {
-		annotated.Keys[i] = PublicKey2Annotated{
-			Reserved: p.Keys[i].Reserved,
-			UUID:     p.Keys[i].UUID,
-			Key:      p.Keys[i].Key,
-		}
-	}
-	return annotated
-}
-
-// FromAnnotated converts PublicKeys2Annotated to PublicKeys2
-func (p *PublicKeys2Annotated) FromAnnotated() *PublicKeys2 {
-	legacy := &PublicKeys2{}
-	for i := range p.Keys {
-		legacy.Keys[i] = PublicKey2{
-			Reserved: p.Keys[i].Reserved,
-			UUID:     p.Keys[i].UUID,
-			Key:      p.Keys[i].Key,
-		}
-	}
-	return legacy
-}
-
-// ToAnnotated converts ToolsAreaExtended to ToolsAreaExtendedAnnotated
-func (t *ToolsAreaExtended) ToAnnotated() *ToolsAreaExtendedAnnotated {
-	return &ToolsAreaExtendedAnnotated{
-		TLVRC:       t.TLVRC,
-		CRCFlag:     t.CRCFlag,
-		TotalLength: t.TotalLength,
-		TypeLength:  t.TypeLength,
-		TypeData:    t.TypeData,
-		Reserved:    t.Reserved,
-	}
-}
-
-// FromAnnotated converts ToolsAreaExtendedAnnotated to ToolsAreaExtended
-func (t *ToolsAreaExtendedAnnotated) FromAnnotated() *ToolsAreaExtended {
-	return &ToolsAreaExtended{
-		TLVRC:       t.TLVRC,
-		CRCFlag:     t.CRCFlag,
-		TotalLength: t.TotalLength,
-		TypeLength:  t.TypeLength,
-		TypeData:    t.TypeData,
-		Reserved:    t.Reserved,
-	}
-}

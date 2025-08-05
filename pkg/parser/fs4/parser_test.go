@@ -121,19 +121,30 @@ func createMockFS4Firmware() []byte {
 func createITOCEntry(sectionType uint8, size uint32, addr uint32, crc uint16, noCRC bool) []byte {
 	entry := &types.ITOCEntry{}
 	
-	// Manually set fields in the data array
-	// This is a simplified version - real implementation would need proper bit packing
-	entry.Data[0] = sectionType
-	binary.BigEndian.PutUint32(entry.Data[1:5], size)
-	binary.BigEndian.PutUint32(entry.Data[20:24], addr)
-	
-	// Set CRC fields
-	if !noCRC {
-		// Set CRC in appropriate location (simplified)
-		binary.BigEndian.PutUint16(entry.Data[26:28], crc)
+	// Set the annotated fields directly
+	entry.Type = sectionType
+	entry.SizeDwords = size / 4 // Size is stored in dwords
+	entry.FlashAddrDwords = addr / 8 // Flash addr handling
+	entry.SectionCRC = crc
+	if noCRC {
+		entry.CRCField = 1 // Set NoCRC flag
 	}
 	
-	return entry.Data[:]
+	// Marshal to bytes
+	data, err := entry.Marshal()
+	if err != nil {
+		// Fallback to manual creation if marshal fails
+		buf := make([]byte, 32) // ITOC entry is 32 bytes
+		buf[0] = sectionType
+		binary.BigEndian.PutUint32(buf[1:5], size)
+		binary.BigEndian.PutUint32(buf[20:24], addr)
+		if !noCRC {
+			binary.BigEndian.PutUint16(buf[26:28], crc)
+		}
+		return buf
+	}
+	
+	return data
 }
 
 func TestNewParser(t *testing.T) {
@@ -330,7 +341,7 @@ func TestTOCReader_GetCRCType(t *testing.T) {
 		{
 			name: "No CRC flag set",
 			entry: &types.ITOCEntry{
-				CRC:        1, // NoCRC is indicated by CRC field = 1
+				CRCField:   1, // NoCRC is indicated by CRCField = 1
 				SectionCRC: 0,
 			},
 			expected: types.CRCNone,
@@ -338,7 +349,7 @@ func TestTOCReader_GetCRCType(t *testing.T) {
 		{
 			name: "CRC in ITOC entry",
 			entry: &types.ITOCEntry{
-				CRC:        0, // Normal CRC
+				CRCField:   0, // Normal CRC
 				SectionCRC: 0x1234,
 			},
 			expected: types.CRCInITOCEntry,
@@ -346,7 +357,7 @@ func TestTOCReader_GetCRCType(t *testing.T) {
 		{
 			name: "CRC in section",
 			entry: &types.ITOCEntry{
-				CRC:        0, // Normal CRC
+				CRCField:   0, // Normal CRC
 				SectionCRC: 0,
 			},
 			expected: types.CRCInSection,
@@ -446,7 +457,8 @@ func TestParser_ParseEncryptedFirmware(t *testing.T) {
 	}
 	
 	// Verify IMAGE_INFO section was added
-	imageInfoSections := parser.sections[types.SectionTypeImageInfo]
+	sections := parser.GetSections()
+	imageInfoSections := sections[types.SectionTypeImageInfo]
 	if len(imageInfoSections) == 0 {
 		t.Error("IMAGE_INFO section not found in encrypted firmware")
 	}

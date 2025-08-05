@@ -1,8 +1,6 @@
 package sections
 
 import (
-	"encoding/json"
-	
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
@@ -11,13 +9,14 @@ import (
 // HWPointerSection represents a Hardware Pointer section
 type HWPointerSection struct {
 	*interfaces.BaseSection
-	FS4Pointers *types.FS4HWPointers
-	FS5Pointers *types.FS5HWPointers
-	Format      types.FirmwareFormat
+	FS4Pointers *types.FS4HWPointers `json:"fs4_pointers,omitempty"`
+	FS5Pointers *types.FS5HWPointers `json:"fs5_pointers,omitempty"`
+	Format      types.FirmwareFormat `json:"format,omitempty"`
 }
 
 // NewHWPointerSection creates a new HW Pointer section
 func NewHWPointerSection(base *interfaces.BaseSection) *HWPointerSection {
+	base.HasRawData = true // Default to true until successfully parsed
 	return &HWPointerSection{
 		BaseSection: base,
 	}
@@ -53,50 +52,7 @@ func (s *HWPointerSection) Parse(data []byte) error {
 		s.FS4Pointers = annotated
 	}
 	
+	s.HasRawData = false // Successfully parsed
 	return nil
 }
 
-// MarshalJSON returns JSON representation of the HW Pointer section
-func (s *HWPointerSection) MarshalJSON() ([]byte, error) {
-	baseInfo := map[string]interface{}{
-		"type":         s.Type(),
-		"type_name":    s.TypeName(),
-		"offset":       s.Offset(),
-		"size":         s.Size(),
-		"format":       s.Format.String(),
-	}
-	
-	if s.FS4Pointers != nil {
-		baseInfo["hw_pointers"] = map[string]interface{}{
-			"boot_record_ptr": s.FS4Pointers.BootRecordPtr,
-			"boot2_ptr": s.FS4Pointers.Boot2Ptr,
-			"toc_ptr": s.FS4Pointers.TOCPtr,
-			"tools_ptr": s.FS4Pointers.ToolsPtr,
-			"fw_window_start_ptr": s.FS4Pointers.FWWindowStartPtr,
-			"fw_window_end_ptr": s.FS4Pointers.FWWindowEndPtr,
-			"image_info_section_ptr": s.FS4Pointers.ImageInfoSectionPtr,
-			"hashes_table_ptr": s.FS4Pointers.HashesTablePtr,
-			"digest_recovery_key_ptr": s.FS4Pointers.DigestRecoveryKeyPtr,
-			"digest_ptr": s.FS4Pointers.DigestPtr,
-		}
-	} else if s.FS5Pointers != nil {
-		baseInfo["hw_pointers"] = map[string]interface{}{
-			"boot2_ptr": s.FS5Pointers.Boot2Ptr,
-			"toc_ptr": s.FS5Pointers.TOCPtr,
-			"tools_ptr": s.FS5Pointers.ToolsPtr,
-			"image_info_section_ptr": s.FS5Pointers.ImageInfoSectionPtr,
-			"fw_public_key_ptr": s.FS5Pointers.FWPublicKeyPtr,
-			"fw_signature_ptr": s.FS5Pointers.FWSignaturePtr,
-			"public_key_ptr": s.FS5Pointers.PublicKeyPtr,
-			"forbidden_versions_ptr": s.FS5Pointers.ForbiddenVersionsPtr,
-			"psc_bl1_ptr": s.FS5Pointers.PSCBl1Ptr,
-			"psc_hashes_table_ptr": s.FS5Pointers.PSCHashesTablePtr,
-			"ncore_hashes_pointer": s.FS5Pointers.NCoreHashesPointer,
-			"psc_fw_update_handle_ptr": s.FS5Pointers.PSCFWUpdateHandlePtr,
-			"psc_bch_pointer": s.FS5Pointers.PSCBCHPointer,
-			"ncore_bch_pointer": s.FS5Pointers.NCoreBCHPointer,
-		}
-	}
-	
-	return json.Marshal(baseInfo)
-}

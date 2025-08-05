@@ -240,6 +240,10 @@ Examples:
 	
 	rootCmd.AddCommand(reassembleCmd)
 
+	// Add report commands
+	rootCmd.AddCommand(CreateReportCommand())
+	rootCmd.AddCommand(CreateSectionReportCommand())
+
 	// Execute command
 	if err := rootCmd.Execute(); err != nil {
 		logger.Error("Command execution failed", zap.Error(err))

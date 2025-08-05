@@ -43,6 +43,10 @@ const (
 	// Image info constants
 	ImageInfoSize = 1024 // Standard size
 	
+	// DEV_INFO and MFG_INFO constants
+	DevInfoSize = 512  // 0x200 - image_layout_device_info size
+	MfgInfoSize = 320  // 0x140 - image_layout_mfg_info size
+	
 	// Padding patterns
 	PaddingByteFF   uint8  = 0xFF
 	PaddingByte00   uint8  = 0x00

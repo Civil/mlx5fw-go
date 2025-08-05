@@ -176,10 +176,24 @@ func NewDBGFwParamsSection(base *interfaces.BaseSection) *DBGFwParamsSection {
 func (s *DBGFwParamsSection) Parse(data []byte) error {
 	s.SetRawData(data)
 	
+	// Based on mstflint analysis, DBG_FW_PARAMS can be very small (8 bytes)
+	// and may contain compressed data without a header structure
 	if len(data) < 16 {
-		return merry.New("DBG_FW_PARAMS section too small")
+		// Small section, likely compressed data without header
+		// Check if it's zlib compressed (starts with 0x78)
+		if len(data) >= 2 && data[0] == 0x78 {
+			// This is compressed data, treat it as raw data
+			s.Data = data
+			s.Header = nil
+		} else {
+			// Unknown format, keep raw data
+			s.Data = data
+			s.Header = nil
+		}
+		return nil
 	}
 	
+	// Normal case: has header
 	s.Header = &types.DBGFwParams{}
 	if err := s.Header.Unmarshal(data[:16]); err != nil {
 		return merry.Wrap(err)
@@ -218,6 +232,17 @@ func (s *DBGFwParamsSection) MarshalJSON() ([]byte, error) {
 			"uncompressed_size":  s.Header.UncompressedSize,
 			"compressed_size":    s.Header.CompressedSize,
 			"data_size":          len(s.Data),
+		}
+	} else if s.Data != nil && len(s.Data) > 0 {
+		// No header, just raw data
+		result["dbg_fw_params"] = map[string]interface{}{
+			"note": "Small section with raw data (no header)",
+			"data_size": len(s.Data),
+		}
+		
+		// Check if it looks like compressed data
+		if len(s.Data) >= 2 && s.Data[0] == 0x78 {
+			result["dbg_fw_params"].(map[string]interface{})["possible_compression"] = "zlib"
 		}
 	}
 	

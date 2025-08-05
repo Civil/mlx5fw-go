@@ -40,12 +40,12 @@ func main() {
 	
 	boot2 := boot2Sections[0]
 	fmt.Printf("BOOT2 section:\n")
-	fmt.Printf("  Offset: 0x%x\n", boot2.Offset)
-	fmt.Printf("  Size: 0x%x (%d bytes)\n", boot2.Size, boot2.Size)
-	fmt.Printf("  CRC Type: %v\n", boot2.CRCType)
+	fmt.Printf("  Offset: 0x%x\n", boot2.Offset())
+	fmt.Printf("  Size: 0x%x (%d bytes)\n", boot2.Size(), boot2.Size())
+	fmt.Printf("  CRC Type: %v\n", boot2.CRCType())
 	
 	// Read the actual BOOT2 data
-	boot2Data, err := reader.ReadSection(int64(boot2.Offset), boot2.Size)
+	boot2Data, err := reader.ReadSection(int64(boot2.Offset()), boot2.Size())
 	if err != nil {
 		fmt.Printf("Failed to read BOOT2: %v\n", err)
 		return
@@ -61,14 +61,14 @@ func main() {
 	// The size in header should match
 	headerSize := binary.BigEndian.Uint32(boot2Data[4:8])
 	fmt.Printf("\nSize from header: 0x%x\n", headerSize)
-	fmt.Printf("Size used by section: 0x%x\n", boot2.Size)
+	fmt.Printf("Size used by section: 0x%x\n", boot2.Size())
 	
-	if headerSize != boot2.Size {
+	if headerSize != boot2.Size() {
 		fmt.Printf("WARNING: Size mismatch!\n")
 	}
 	
 	// Now let's see what's happening with verification
-	status, err := p.VerifySection(boot2)
+	status, err := p.VerifySectionNew(boot2)
 	fmt.Printf("\nVerification result: %s\n", status)
 	if err != nil {
 		fmt.Printf("Verification error: %v\n", err)

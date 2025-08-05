@@ -45,7 +45,11 @@ type ITOCEntryAnnotated struct {
 	// Byte 24-25: Encrypted flag and CRC flags
 	// Based on actual bit layout from legacy parser:
 	// - bit 192: encrypted
-	// - bits 205-207: crc field (3 bits) containing no_crc flag
+	// - bits 193-204: reserved
+	// - bits 205-207: CRC type field (3 bits)
+	//   - 0: CRC in ITOC entry (section_crc field)
+	//   - 1: No CRC validation
+	//   - 2: CRC at end of section data
 	Encrypted       bool   `offset:"bit:192,endian:be"`                       // bit 192
 	Reserved5       uint8  `offset:"bit:193,len:12,endian:be,reserved:true"` // bits 193-204
 	CRCField        uint8  `offset:"bit:205,len:3,endian:be"`                // bits 205-207 (3 bits)
@@ -104,10 +108,10 @@ func (e *ITOCEntryAnnotated) GetParam0() uint32 {
 	return (e.Param0High << 4) | e.Param0Low
 }
 
-// GetNoCRC returns true if the no_crc flag is set
+// GetNoCRC returns true if the CRC type is NONE
 func (e *ITOCEntryAnnotated) GetNoCRC() bool {
-	// no_crc is bit 0 of the 3-bit CRC field (bit 207)
-	return (e.CRCField & 0x1) != 0
+	// Check if CRC type is CRCNone (value 1)
+	return e.GetCRCType() == CRCNone
 }
 
 // GetDeviceData returns true if the device_data flag is set
@@ -119,4 +123,11 @@ func (e *ITOCEntryAnnotated) GetDeviceData() bool {
 // GetType returns the type as uint16 for compatibility
 func (e *ITOCEntryAnnotated) GetType() uint16 {
 	return uint16(e.Type)
+}
+
+// GetCRCType returns the CRC type based on the CRCField value
+func (e *ITOCEntryAnnotated) GetCRCType() CRCType {
+	// The CRCField contains the CRC type value directly
+	// The annotations have already extracted the 3-bit field for us
+	return CRCType(e.CRCField)
 }

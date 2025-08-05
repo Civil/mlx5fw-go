@@ -62,9 +62,13 @@ for c_f in ${list}; do
 done
 
 score=$(echo | awk -vtotal=${total} -vfailed=${failed} 'END{print (total+0.0-failed)/total}')
+ec="0"
+if [[ ${score} != "1" ]]; then
+	ec=1
+fi
 echo "${score}"
 if [[ ! -z ${out} ]]; then
 	echo "${out}"
 fi
 
-exit 0
+exit ${ec}

@@ -38,8 +38,8 @@ func TestFS4HWPointers(t *testing.T) {
 		t.Fatalf("Failed to unmarshal HW pointers: %v", err)
 	}
 	
-	// Convert to legacy format for comparison
-	hwPointers := hwPointersAnnotated.FromAnnotated()
+	// Use the annotated version directly (no conversion needed with type aliases)
+	hwPointers := hwPointersAnnotated
 
 	// Test boot record pointer
 	if hwPointers.BootRecordPtr.Ptr != 0 {
@@ -90,8 +90,8 @@ func TestITOCHeader(t *testing.T) {
 		t.Fatalf("Failed to unmarshal ITOC header: %v", err)
 	}
 	
-	// Convert to legacy format for comparison
-	header := headerAnnotated.FromAnnotated()
+	// Use the annotated version directly (no conversion needed with type aliases)
+	header := headerAnnotated
 
 	// Test signature
 	if header.Signature0 != ITOCSignature {
@@ -157,8 +157,8 @@ func TestITOCEntry_ParseFields(t *testing.T) {
 				t.Fatalf("Failed to unmarshal ITOCEntry: %v", err)
 			}
 			
-			// Convert to legacy format for comparison
-			entry := entryAnnotated.FromAnnotated()
+			// Use the annotated version directly (no conversion needed with type aliases)
+			entry := entryAnnotated
 
 			if entry.Type != tt.expectedType {
 				t.Errorf("ITOCEntry.Type = 0x%x, want 0x%x", entry.Type, tt.expectedType)

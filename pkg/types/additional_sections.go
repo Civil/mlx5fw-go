@@ -43,6 +43,7 @@ type VersionVector struct {
 	Reserved4         ResetVersion      // offset 0x24
 	Reserved5         ResetVersion      // offset 0x28
 	Reserved6         ResetVersion      // offset 0x2c
+	Reserved7         ResetVersion      // offset 0x30 - total 52 bytes
 }
 
 // ResetInfo represents the RESET_INFO section structure
@@ -165,7 +166,7 @@ type DigitalCertPtr struct {
 	CertType     uint32    // Certificate type
 	CertOffset   uint32    // Offset to certificate
 	CertSize     uint32    // Certificate size
-	Reserved     [52]uint8 // Reserved
+	Reserved     [28]uint8 // Reserved (28 bytes to make total 40)
 }
 
 // DigitalCertRW represents DIGITAL_CERT_RW section

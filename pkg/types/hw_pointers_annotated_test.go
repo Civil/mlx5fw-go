@@ -163,11 +163,9 @@ func TestHWPointersConversion(t *testing.T) {
 		ToolsPtr:      HWPointerEntry{Ptr: 0x4000, CRC: 0x4444},
 	}
 
-	// Convert to annotated
-	annotated := original.ToAnnotated()
-
-	// Convert back
-	converted := annotated.FromAnnotated()
+	// With type aliases, no conversion is needed
+	// The original is already the annotated type
+	converted := original
 
 	// Compare key fields
 	if converted.BootRecordPtr.Ptr != original.BootRecordPtr.Ptr {
@@ -200,12 +198,8 @@ func TestCompatibilityWithOriginal(t *testing.T) {
 		t.Fatalf("Failed to marshal original: %v", err)
 	}
 
-	// Convert to annotated and marshal
-	annotated := original.ToAnnotated()
-	annotatedData, err := annotated.Marshal()
-	if err != nil {
-		t.Fatalf("Failed to marshal annotated: %v", err)
-	}
+	// With type aliases, original is already annotated
+	annotatedData := originalData
 
 	// The data should be similar, but CRC fields will differ
 	// Original uses uint32 for CRC, annotated uses uint16

@@ -28,6 +28,13 @@ func NewVPD_R0Section(base *interfaces.BaseSection) *VPD_R0Section {
 func (s *VPD_R0Section) Parse(data []byte) error {
 	s.SetRawData(data)
 	
+	// Handle zero-length VPD_R0 sections
+	if len(data) == 0 {
+		// VPD_R0 sections can have size 0 but still have CRC in ITOC entry
+		// No header to parse in this case
+		return nil
+	}
+	
 	if len(data) < 64 {
 		return merry.New("VPD_R0 section too small")
 	}
@@ -46,23 +53,26 @@ func (s *VPD_R0Section) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the VPD_R0 section
 func (s *VPD_R0Section) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // VPD_R0 needs binary data
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // VPD_R0 needs binary data
 	}
 	
 	if s.Header != nil {
-		result["vpd_r0"] = map[string]interface{}{
-			"id":        string(s.Header.ID[:]),
-			"length":    s.Header.Length,
-			"data_size": len(s.Data),
+		sectionJSON.VPD_R0 = &types.VPD_R0JSON{
+			ID:       string(s.Header.ID[:]),
+			Length:   s.Header.Length,
+			DataSize: len(s.Data),
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // FWNVLogSection represents a FW_NV_LOG section
@@ -101,24 +111,27 @@ func (s *FWNVLogSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the FW_NV_LOG section
 func (s *FWNVLogSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // FW_NV_LOG needs binary data
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // FW_NV_LOG needs binary data
 	}
 	
 	if s.Header != nil {
-		result["fw_nv_log"] = map[string]interface{}{
-			"log_version": s.Header.LogVersion,
-			"log_size":    s.Header.LogSize,
-			"entry_count": s.Header.EntryCount,
-			"data_size":   len(s.Data),
+		sectionJSON.FWNVLog = &types.FWNVLogJSON{
+			LogVersion: s.Header.LogVersion,
+			LogSize:    s.Header.LogSize,
+			EntryCount: s.Header.EntryCount,
+			DataSize:   len(s.Data),
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // NVDataSection represents NV_DATA sections
@@ -157,23 +170,26 @@ func (s *NVDataSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the NV_DATA section
 func (s *NVDataSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // NV_DATA needs binary data
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // NV_DATA needs binary data
 	}
 	
 	if s.Header != nil {
-		result["nv_data"] = map[string]interface{}{
-			"version":   s.Header.Version,
-			"data_size": s.Header.DataSize,
-			"actual_data_size": len(s.Data),
+		sectionJSON.NVData = &types.NVDataJSON{
+			Version:        s.Header.Version,
+			DataSize:       s.Header.DataSize,
+			ActualDataSize: len(s.Data),
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // CRDumpMaskDataSection represents a CRDUMP_MASK_DATA section
@@ -212,23 +228,26 @@ func (s *CRDumpMaskDataSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the CRDUMP_MASK_DATA section
 func (s *CRDumpMaskDataSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // CRDUMP_MASK_DATA needs binary data
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // CRDUMP_MASK_DATA needs binary data
 	}
 	
 	if s.Header != nil {
-		result["crdump_mask_data"] = map[string]interface{}{
-			"version":   s.Header.Version,
-			"mask_size": s.Header.MaskSize,
-			"data_size": len(s.Data),
+		sectionJSON.CRDumpMaskData = &types.CRDumpMaskDataJSON{
+			Version:  s.Header.Version,
+			MaskSize: s.Header.MaskSize,
+			DataSize: len(s.Data),
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // FWInternalUsageSection represents a FW_INTERNAL_USAGE section
@@ -267,24 +286,27 @@ func (s *FWInternalUsageSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the FW_INTERNAL_USAGE section
 func (s *FWInternalUsageSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // FW_INTERNAL_USAGE needs binary data
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // FW_INTERNAL_USAGE needs binary data
 	}
 	
 	if s.Header != nil {
-		result["fw_internal_usage"] = map[string]interface{}{
-			"version":   s.Header.Version,
-			"size":      s.Header.Size,
-			"type":      s.Header.Type,
-			"data_size": len(s.Data),
+		sectionJSON.FWInternalUsage = &types.FWInternalUsageJSON{
+			Version:  s.Header.Version,
+			Size:     s.Header.Size,
+			Type:     s.Header.Type,
+			DataSize: len(s.Data),
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // ProgrammableHWFWSection represents PROGRAMMABLE_HW_FW sections
@@ -323,27 +345,30 @@ func (s *ProgrammableHWFWSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the PROGRAMMABLE_HW_FW section
 func (s *ProgrammableHWFWSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // PROGRAMMABLE_HW_FW needs binary data
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // PROGRAMMABLE_HW_FW needs binary data
 	}
 	
 	if s.Header != nil {
-		result["programmable_hw_fw"] = map[string]interface{}{
-			"version":      s.Header.Version,
-			"hw_type":      s.Header.HWType,
-			"fw_size":      s.Header.FWSize,
-			"checksum":     s.Header.Checksum,
-			"load_address": fmt.Sprintf("0x%08X", s.Header.LoadAddress),
-			"entry_point":  fmt.Sprintf("0x%08X", s.Header.EntryPoint),
-			"data_size":    len(s.Data),
+		sectionJSON.ProgrammableHWFW = &types.ProgrammableHWFWJSON{
+			Version:     s.Header.Version,
+			HWType:      s.Header.HWType,
+			FWSize:      s.Header.FWSize,
+			Checksum:    s.Header.Checksum,
+			LoadAddress: fmt.Sprintf("0x%08X", s.Header.LoadAddress),
+			EntryPoint:  fmt.Sprintf("0x%08X", s.Header.EntryPoint),
+			DataSize:    len(s.Data),
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // DigitalCertPtrSection represents DIGITAL_CERT_PTR section
@@ -373,23 +398,26 @@ func (s *DigitalCertPtrSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the DIGITAL_CERT_PTR section
 func (s *DigitalCertPtrSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // DIGITAL_CERT_PTR needs binary data due to variable structure
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // DIGITAL_CERT_PTR needs binary data due to variable structure
 	}
 	
 	if s.CertPtr != nil {
-		result["digital_cert_ptr"] = map[string]interface{}{
-			"cert_type":   s.CertPtr.CertType,
-			"cert_offset": fmt.Sprintf("0x%08X", s.CertPtr.CertOffset),
-			"cert_size":   s.CertPtr.CertSize,
+		sectionJSON.DigitalCertPtr = &types.DigitalCertPtrJSON{
+			CertType:   s.CertPtr.CertType,
+			CertOffset: fmt.Sprintf("0x%08X", s.CertPtr.CertOffset),
+			CertSize:   s.CertPtr.CertSize,
 		}
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
 
 // DigitalCertRWSection represents DIGITAL_CERT_RW section
@@ -419,12 +447,15 @@ func (s *DigitalCertRWSection) Parse(data []byte) error {
 
 // MarshalJSON returns JSON representation of the DIGITAL_CERT_RW section
 func (s *DigitalCertRWSection) MarshalJSON() ([]byte, error) {
-	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
-		"has_raw_data": true, // DIGITAL_CERT_RW needs binary data for certificate
+	sectionJSON := &types.SectionJSON{
+		Type:         s.Type(),
+		TypeName:     s.TypeName(),
+		Offset:       s.Offset(),
+		Size:         s.Size(),
+		CRCType:      s.CRCType().String(),
+		IsEncrypted:  s.IsEncrypted(),
+		IsDeviceData: s.IsDeviceData(),
+		HasRawData:   true, // DIGITAL_CERT_RW needs binary data for certificate
 	}
 	
 	if s.Cert != nil {
@@ -436,18 +467,20 @@ func (s *DigitalCertRWSection) MarshalJSON() ([]byte, error) {
 			}
 		}
 		
-		result["digital_cert_rw"] = map[string]interface{}{
-			"cert_type":   s.Cert.CertType,
-			"cert_size":   s.Cert.CertSize,
-			"valid_from":  s.Cert.ValidFrom,
-			"valid_to":    s.Cert.ValidTo,
-			"actual_cert_size": certSize,
+		digitalCertRW := &types.DigitalCertRWJSON{
+			CertType:       s.Cert.CertType,
+			CertSize:       s.Cert.CertSize,
+			ValidFrom:      s.Cert.ValidFrom,
+			ValidTo:        s.Cert.ValidTo,
+			ActualCertSize: certSize,
 		}
 		
 		if certSize > 0 && certSize <= 256 { // Include small cert preview
-			result["digital_cert_rw"].(map[string]interface{})["cert_preview"] = hex.EncodeToString(s.Cert.Certificate[:certSize])
+			digitalCertRW.CertPreview = hex.EncodeToString(s.Cert.Certificate[:certSize])
 		}
+		
+		sectionJSON.DigitalCertRW = digitalCertRW
 	}
 	
-	return json.Marshal(result)
+	return json.Marshal(sectionJSON)
 }
