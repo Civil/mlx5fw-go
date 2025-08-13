@@ -23,13 +23,12 @@ func NewForbiddenVersionsSection(base *interfaces.BaseSection) *ForbiddenVersion
 // Parse parses the FORBIDDEN_VERSIONS section data
 func (s *ForbiddenVersionsSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	s.ForbiddenVersions = &types.ForbiddenVersions{}
 	if err := s.ForbiddenVersions.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	s.HasRawData = false // Successfully parsed
 	return nil
 }
-

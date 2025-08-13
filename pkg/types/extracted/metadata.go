@@ -44,9 +44,9 @@ type MagicInfo struct {
 
 // HWPointersInfo stores HW pointers with proper type handling
 type HWPointersInfo struct {
-	Offset uint32                `json:"offset"`
-	FS4    *types.FS4HWPointers  `json:"fs4,omitempty"`
-	FS5    *types.FS5HWPointers  `json:"fs5,omitempty"`
+	Offset uint32               `json:"offset"`
+	FS4    *types.FS4HWPointers `json:"fs4,omitempty"`
+	FS5    *types.FS5HWPointers `json:"fs5,omitempty"`
 }
 
 // GetParsed returns the non-nil HW pointers (either FS4 or FS5)

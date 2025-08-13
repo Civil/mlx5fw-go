@@ -2,7 +2,7 @@ package sections
 
 import (
 	"encoding/json"
-	
+
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/types"
@@ -38,20 +38,20 @@ func (s *GenericSection) CalculateCRC() (uint32, error) {
 		if len(data) < 4 {
 			return 0, merry.New("section too small for CRC")
 		}
-		
+
 		// Calculate CRC over data excluding last 4 bytes
 		crcData := data[:len(data)-4]
 		crc := s.crcCalc.CalculateSoftwareCRC16(crcData)
 		return uint32(crc), nil
-		
+
 	case types.CRCInITOCEntry:
 		// CRC is in ITOC entry, not in section data
 		return 0, nil
-		
+
 	case types.CRCNone:
 		// No CRC
 		return 0, nil
-		
+
 	default:
 		return 0, merry.Errorf("unknown CRC type: %d", s.CRCType())
 	}
@@ -74,8 +74,8 @@ func (s *GenericSection) MarshalJSON() ([]byte, error) {
 		CRCType:      s.CRCType().String(),
 		IsEncrypted:  s.IsEncrypted(),
 		IsDeviceData: s.IsDeviceData(),
-		HasRawData:   true,  // Flag indicating binary file is needed for reconstruction
+		HasRawData:   true, // Flag indicating binary file is needed for reconstruction
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }

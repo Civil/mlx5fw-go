@@ -1,12 +1,13 @@
 package types
 
 import (
-	"github.com/ghostiam/binstruct"
+	"bytes"
+	"encoding/binary"
 )
 
 // Marshal/Unmarshal methods for FWVersion
 func (f *FWVersion) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, f)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, f)
 }
 
 func (f *FWVersion) Marshal() ([]byte, error) {
@@ -15,7 +16,7 @@ func (f *FWVersion) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for TripleVersion
 func (t *TripleVersion) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, t)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, t)
 }
 
 func (t *TripleVersion) Marshal() ([]byte, error) {
@@ -24,7 +25,7 @@ func (t *TripleVersion) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for ModuleVersion
 func (m *ModuleVersion) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, m)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, m)
 }
 
 func (m *ModuleVersion) Marshal() ([]byte, error) {
@@ -33,7 +34,7 @@ func (m *ModuleVersion) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for ImageSize
 func (i *ImageSize) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, i)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, i)
 }
 
 func (i *ImageSize) Marshal() ([]byte, error) {
@@ -42,7 +43,7 @@ func (i *ImageSize) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for ModuleVersions
 func (m *ModuleVersions) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, m)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, m)
 }
 
 func (m *ModuleVersions) Marshal() ([]byte, error) {
@@ -51,7 +52,7 @@ func (m *ModuleVersions) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for UIDEntry
 func (u *UIDEntry) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, u)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, u)
 }
 
 func (u *UIDEntry) Marshal() ([]byte, error) {
@@ -60,7 +61,7 @@ func (u *UIDEntry) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for Guids
 func (g *Guids) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, g)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, g)
 }
 
 func (g *Guids) Marshal() ([]byte, error) {
@@ -69,7 +70,7 @@ func (g *Guids) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for OperationKey
 func (o *OperationKey) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, o)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, o)
 }
 
 func (o *OperationKey) Marshal() ([]byte, error) {
@@ -78,7 +79,8 @@ func (o *OperationKey) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for ImageInfoExtended
 func (i *ImageInfoExtended) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalLE(data, i)
+	// Extended image info uses little-endian layout; use binary.Read fallback
+	return binary.Read(bytes.NewReader(data), binary.LittleEndian, i)
 }
 
 func (i *ImageInfoExtended) Marshal() ([]byte, error) {
@@ -87,7 +89,7 @@ func (i *ImageInfoExtended) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for HashesTableHeaderExtended
 func (h *HashesTableHeaderExtended) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, h)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, h)
 }
 
 func (h *HashesTableHeaderExtended) Marshal() ([]byte, error) {
@@ -96,7 +98,7 @@ func (h *HashesTableHeaderExtended) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for HTOCEntry
 func (h *HTOCEntry) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, h)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, h)
 }
 
 func (h *HTOCEntry) Marshal() ([]byte, error) {
@@ -105,7 +107,7 @@ func (h *HTOCEntry) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for HTOCHeader
 func (h *HTOCHeader) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, h)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, h)
 }
 
 func (h *HTOCHeader) Marshal() ([]byte, error) {
@@ -114,7 +116,7 @@ func (h *HTOCHeader) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for HTOC
 func (h *HTOC) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, h)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, h)
 }
 
 func (h *HTOC) Marshal() ([]byte, error) {
@@ -123,7 +125,7 @@ func (h *HTOC) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for HTOCHash
 func (h *HTOCHash) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, h)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, h)
 }
 
 func (h *HTOCHash) Marshal() ([]byte, error) {
@@ -132,7 +134,7 @@ func (h *HTOCHash) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for HashesTableExtended
 func (h *HashesTableExtended) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, h)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, h)
 }
 
 func (h *HashesTableExtended) Marshal() ([]byte, error) {
@@ -141,7 +143,7 @@ func (h *HashesTableExtended) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for BootVersion
 func (b *BootVersion) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, b)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, b)
 }
 
 func (b *BootVersion) Marshal() ([]byte, error) {
@@ -150,10 +152,9 @@ func (b *BootVersion) Marshal() ([]byte, error) {
 
 // Marshal/Unmarshal methods for DeviceInfoExtended
 func (d *DeviceInfoExtended) Unmarshal(data []byte) error {
-	return binstruct.UnmarshalBE(data, d)
+	return binary.Read(bytes.NewReader(data), binary.BigEndian, d)
 }
 
 func (d *DeviceInfoExtended) Marshal() ([]byte, error) {
 	return MarshalBE(d)
 }
-

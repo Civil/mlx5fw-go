@@ -25,19 +25,19 @@ func TestFS4HWPointers(t *testing.T) {
 		"ffffffff00000000" + // FWSecurityVersionPtr (0xffffffff)
 		"ffffffff00000000" + // GCMIVDeltaPtr (0xffffffff)
 		"ffffffff00000000" // HashesTablePtr (0xffffffff)
-	
+
 	data, err := hex.DecodeString(hexData)
 	if err != nil {
 		t.Fatalf("Failed to decode hex string: %v", err)
 	}
 
-	// Use annotated version for testing
-	hwPointersAnnotated := &FS4HWPointersAnnotated{}
+	// Use the annotated struct type (now named FS4HWPointers)
+	hwPointersAnnotated := &FS4HWPointers{}
 	err = hwPointersAnnotated.Unmarshal(data[:128])
 	if err != nil {
 		t.Fatalf("Failed to unmarshal HW pointers: %v", err)
 	}
-	
+
 	// Use the annotated version directly (no conversion needed with type aliases)
 	hwPointers := hwPointersAnnotated
 
@@ -84,12 +84,12 @@ func TestITOCHeader(t *testing.T) {
 	}
 
 	// Use annotated version for testing
-	headerAnnotated := &ITOCHeaderAnnotated{}
+	headerAnnotated := &ITOCHeader{}
 	err = headerAnnotated.Unmarshal(data)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal ITOC header: %v", err)
 	}
-	
+
 	// Use the annotated version directly (no conversion needed with type aliases)
 	header := headerAnnotated
 
@@ -102,12 +102,12 @@ func TestITOCHeader(t *testing.T) {
 	if header.Version != 2 {
 		t.Errorf("ITOCHeader.Version = %d, want 2", header.Version)
 	}
-	
+
 	// Test CRC fields
 	if header.ITOCEntryCRC != 0x1234 {
 		t.Errorf("ITOCHeader.ITOCEntryCRC = 0x%x, want 0x1234", header.ITOCEntryCRC)
 	}
-	
+
 	if header.CRC != 0x5678 {
 		t.Errorf("ITOCHeader.CRC = 0x%x, want 0x5678", header.CRC)
 	}
@@ -115,31 +115,31 @@ func TestITOCHeader(t *testing.T) {
 
 func TestITOCEntry_ParseFields(t *testing.T) {
 	tests := []struct {
-		name           string
-		hexData        string
-		expectedType   uint8
-		expectedSize   uint32
-		expectedAddr   uint32
-		expectedCRC    uint16
-		expectedNoCRC  bool
+		name          string
+		hexData       string
+		expectedType  uint8
+		expectedSize  uint32
+		expectedAddr  uint32
+		expectedCRC   uint16
+		expectedNoCRC bool
 	}{
 		{
-			name:           "BOOT3_CODE entry",
-			hexData:        "0f002590205000402050004400000000000000000000a00000005a5200002dda",
-			expectedType:   0x0f,
-			expectedSize:   0x2590,
-			expectedAddr:   0xa000,
-			expectedCRC:    0x5a52,
-			expectedNoCRC:  false,
+			name:          "BOOT3_CODE entry",
+			hexData:       "0f002590205000402050004400000000000000000000a00000005a5200002dda",
+			expectedType:  0x0f,
+			expectedSize:  0x2590,
+			expectedAddr:  0xa000,
+			expectedCRC:   0x5a52,
+			expectedNoCRC: false,
 		},
 		{
-			name:           "Empty entry",
-			hexData:        "ff000000000000000000000000000000000000000000000000000000000000ff",
-			expectedType:   0xff,
-			expectedSize:   0,
-			expectedAddr:   0,
-			expectedCRC:    0,
-			expectedNoCRC:  false,
+			name:          "Empty entry",
+			hexData:       "ff000000000000000000000000000000000000000000000000000000000000ff",
+			expectedType:  0xff,
+			expectedSize:  0,
+			expectedAddr:  0,
+			expectedCRC:   0,
+			expectedNoCRC: false,
 		},
 	}
 
@@ -151,12 +151,12 @@ func TestITOCEntry_ParseFields(t *testing.T) {
 			}
 
 			// Use annotated version for testing
-			entryAnnotated := &ITOCEntryAnnotated{}
+			entryAnnotated := &ITOCEntry{}
 			err = entryAnnotated.Unmarshal(data)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal ITOCEntry: %v", err)
 			}
-			
+
 			// Use the annotated version directly (no conversion needed with type aliases)
 			entry := entryAnnotated
 
@@ -164,12 +164,12 @@ func TestITOCEntry_ParseFields(t *testing.T) {
 				t.Errorf("ITOCEntry.Type = 0x%x, want 0x%x", entry.Type, tt.expectedType)
 			}
 
-			if entry.Size != tt.expectedSize {
-				t.Errorf("ITOCEntry.Size = 0x%x, want 0x%x", entry.Size, tt.expectedSize)
+			if entry.GetSize() != tt.expectedSize {
+				t.Errorf("ITOCEntry.Size = 0x%x, want 0x%x", entry.GetSize(), tt.expectedSize)
 			}
 
-			if entry.FlashAddr != tt.expectedAddr {
-				t.Errorf("ITOCEntry.FlashAddr = 0x%x, want 0x%x", entry.FlashAddr, tt.expectedAddr)
+			if entry.GetFlashAddr() != tt.expectedAddr {
+				t.Errorf("ITOCEntry.FlashAddr = 0x%x, want 0x%x", entry.GetFlashAddr(), tt.expectedAddr)
 			}
 
 			if entry.SectionCRC != tt.expectedCRC {

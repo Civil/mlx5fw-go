@@ -2,7 +2,7 @@ package sections
 
 import (
 	"encoding/json"
-	
+
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/types"
@@ -27,18 +27,18 @@ func NewImageInfoSection(base *interfaces.BaseSection) *ImageInfoSection {
 // Parse parses the Image Info section data
 func (s *ImageInfoSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	// Check minimum size requirement
 	if len(data) < 1024 {
 		return merry.Errorf("ImageInfo section too small: got %d bytes, minimum 1024 required", len(data))
 	}
-	
+
 	s.Info = &types.ImageInfo{}
-	
+
 	if err := s.Info.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	// Workaround for VSD vendor ID alignment issue
 	// The VSD vendor ID appears to be at offset 0x36 instead of 0x34
 	if len(data) >= 0x38 {
@@ -48,7 +48,7 @@ func (s *ImageInfoSection) Parse(data []byte) error {
 			s.Info.VSDVendorID = actualVendor
 		}
 	}
-	
+
 	return nil
 }
 
@@ -61,13 +61,13 @@ func (s *ImageInfoSection) CalculateCRC() (uint32, error) {
 		if len(data) < 4 {
 			return 0, merry.New("section too small for CRC")
 		}
-		
+
 		// Calculate CRC over data excluding last 4 bytes
 		crcData := data[:len(data)-4]
 		crc := s.crcCalc.CalculateSoftwareCRC16(crcData)
 		return uint32(crc), nil
 	}
-	
+
 	return 0, nil
 }
 
@@ -85,7 +85,7 @@ func (s *ImageInfoSection) MarshalJSON() ([]byte, error) {
 		HasRawData   bool             `json:"has_raw_data"`
 		ImageInfo    *types.ImageInfo `json:"image_info,omitempty"`
 	}
-	
+
 	section := &SectionWithImageInfo{
 		Type:         s.Type(),
 		TypeName:     s.TypeName(),
@@ -97,6 +97,6 @@ func (s *ImageInfoSection) MarshalJSON() ([]byte, error) {
 		HasRawData:   s.Info == nil,
 		ImageInfo:    s.Info,
 	}
-	
+
 	return json.Marshal(section)
 }

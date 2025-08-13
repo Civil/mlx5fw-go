@@ -18,49 +18,49 @@ const (
 type SectionInterface interface {
 	// Type returns the section type
 	Type() uint16
-	
+
 	// TypeName returns the human-readable name for this section type
 	TypeName() string
-	
+
 	// Offset returns the section offset in the firmware
 	Offset() uint64
-	
+
 	// Size returns the section size
 	Size() uint32
-	
+
 	// CRCType returns the CRC type for this section
 	CRCType() types.CRCType
-	
+
 	// HasCRC returns whether this section has CRC verification enabled
 	HasCRC() bool
-	
+
 	// GetCRC returns the expected CRC value for this section
 	GetCRC() uint32
-	
+
 	// CalculateCRC calculates the CRC for this section
 	CalculateCRC() (uint32, error)
-	
+
 	// VerifyCRC verifies the section's CRC
 	VerifyCRC() error
-	
+
 	// IsEncrypted returns whether the section is encrypted
 	IsEncrypted() bool
-	
+
 	// IsDeviceData returns whether this is device-specific data
 	IsDeviceData() bool
-	
+
 	// Parse parses the raw data into section-specific structures
 	Parse(data []byte) error
-	
+
 	// GetRawData returns the raw section data
 	GetRawData() []byte
-	
+
 	// Write writes the section data to the writer
 	Write(w io.Writer) error
-	
+
 	// GetITOCEntry returns the ITOC entry for this section (may be nil)
 	GetITOCEntry() *types.ITOCEntry
-	
+
 	// IsFromHWPointer returns true if this section was referenced from HW pointers
 	IsFromHWPointer() bool
 }
@@ -173,18 +173,18 @@ func (b *BaseSection) VerifyCRC() error {
 	if b.crcHandler == nil {
 		return nil
 	}
-	
+
 	// Get the expected CRC based on the CRC type
 	var expectedCRC uint32
 	if b.SectionCRCType == types.CRCInSection && b.crcHandler.HasEmbeddedCRC() {
 		// CRC is embedded in the section data
 		if len(b.rawData) < MinCRCSectionSize {
-			return fmt.Errorf("section size %d too small for embedded CRC (minimum %d bytes)", 
+			return fmt.Errorf("section size %d too small for embedded CRC (minimum %d bytes)",
 				len(b.rawData), MinCRCSectionSize)
 		}
 		// Extract CRC from the last 4 bytes
 		// For IN_SECTION CRCs, the format is:
-		// - 16-bit CRC in upper 16 bits (bytes 0-1) 
+		// - 16-bit CRC in upper 16 bits (bytes 0-1)
 		// - Lower 16 bits are 0 (bytes 2-3)
 		crcBytes := b.rawData[len(b.rawData)-CRCByteSize:]
 		expectedCRC = binary.BigEndian.Uint32(crcBytes)
@@ -214,38 +214,37 @@ func (b *BaseSection) Parse(data []byte) error {
 	return nil
 }
 
-
 // NewBaseSection creates a new base section with the given parameters
 // Deprecated: Use NewBaseSectionWithOptions for new code
-func NewBaseSection(sectionType uint16, offset uint64, size uint32, crcType types.CRCType, 
+func NewBaseSection(sectionType uint16, offset uint64, size uint32, crcType types.CRCType,
 	crc uint32, isEncrypted, isDeviceData bool, entry *types.ITOCEntry, isFromHWPointer bool) *BaseSection {
-	
+
 	// Build options list from parameters
 	opts := []SectionOption{
 		WithCRC(crcType, crc),
 	}
-	
+
 	if isEncrypted {
 		opts = append(opts, WithEncryption())
 	}
-	
+
 	if isDeviceData {
 		opts = append(opts, WithDeviceData())
 	}
-	
+
 	if entry != nil {
 		opts = append(opts, WithITOCEntry(entry))
 	}
-	
+
 	if isFromHWPointer {
 		opts = append(opts, WithFromHWPointer())
 	}
-	
+
 	// Handle the special case where entry has no_crc flag
 	if entry != nil && entry.GetNoCRC() {
 		opts = append(opts, WithNoCRC())
 	}
-	
+
 	return NewBaseSectionWithOptions(sectionType, offset, size, opts...)
 }
 
@@ -254,7 +253,7 @@ type SectionFactory interface {
 	// CreateSection creates a new section instance for the given type
 	CreateSection(sectionType uint16, offset uint64, size uint32, crcType types.CRCType,
 		crc uint32, isEncrypted, isDeviceData bool, entry *types.ITOCEntry, isFromHWPointer bool) (CompleteSectionInterface, error)
-	
+
 	// CreateSectionFromData creates a section and parses its data
 	CreateSectionFromData(sectionType uint16, offset uint64, size uint32, crcType types.CRCType,
 		crc uint32, isEncrypted, isDeviceData bool, entry *types.ITOCEntry, isFromHWPointer bool, data []byte) (CompleteSectionInterface, error)

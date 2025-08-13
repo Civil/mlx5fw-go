@@ -51,7 +51,7 @@ func TestITOCEntry_ParseFields_Detailed(t *testing.T) {
 			expectedDevData: false, // ParseFields doesn't set this, it's external
 		},
 		{
-			name: "Empty entry (all zeros)",
+			name:            "Empty entry (all zeros)",
 			data:            "0000000000000000000000000000000000000000000000000000000000000000",
 			expectedType:    0x00,
 			expectedSize:    0x0,
@@ -61,7 +61,7 @@ func TestITOCEntry_ParseFields_Detailed(t *testing.T) {
 			expectedDevData: false,
 		},
 		{
-			name: "End marker entry",
+			name:            "End marker entry",
 			data:            "ff00000000000000000000000000000000000000000000000000000000000000",
 			expectedType:    0xFF,
 			expectedSize:    0x0,
@@ -91,22 +91,21 @@ func TestITOCEntry_ParseFields_Detailed(t *testing.T) {
 				t.Fatalf("Failed to decode hex: %v", err)
 			}
 
-			// Create ITOC entry and copy data
+			// Create ITOC entry and unmarshal data
 			entry := &ITOCEntry{}
-			copy(entry.Data[:], data)
-
-			// Parse fields
-			entry.ParseFields()
+			if err := entry.Unmarshal(data); err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
 
 			// Check parsed values
 			if entry.Type != tt.expectedType {
 				t.Errorf("Type = 0x%02X, want 0x%02X", entry.Type, tt.expectedType)
 			}
-			if entry.Size != tt.expectedSize {
-				t.Errorf("Size = 0x%X, want 0x%X", entry.Size, tt.expectedSize)
+			if entry.GetSize() != tt.expectedSize {
+				t.Errorf("Size = 0x%X, want 0x%X", entry.GetSize(), tt.expectedSize)
 			}
-			if entry.FlashAddr != tt.expectedFlash {
-				t.Errorf("FlashAddr = 0x%X, want 0x%X", entry.FlashAddr, tt.expectedFlash)
+			if entry.GetFlashAddr() != tt.expectedFlash {
+				t.Errorf("FlashAddr = 0x%X, want 0x%X", entry.GetFlashAddr(), tt.expectedFlash)
 			}
 			if entry.SectionCRC != tt.expectedCRC {
 				t.Errorf("SectionCRC = 0x%04X, want 0x%04X", entry.SectionCRC, tt.expectedCRC)
@@ -123,13 +122,11 @@ func TestITOCEntry_ParseFields_Detailed(t *testing.T) {
 
 func TestITOCEntry_GetMethods(t *testing.T) {
 	// Test the getter methods
-	entry := &ITOCEntry{
-		Type:       0x10,
-		CRC:        1,    // NoCRC
-		FlashAddr:  0x2000,
-		Size:       0x600,
-		SectionCRC: 0x1234,
-	}
+	entry := &ITOCEntry{SectionCRC: 0x1234}
+	entry.SetType(0x10)
+	entry.SetCRC(1) // NoCRC
+	entry.SetFlashAddr(0x2000)
+	entry.SetSize(0x600)
 
 	t.Run("GetType", func(t *testing.T) {
 		if got := entry.GetType(); got != 0x10 {
@@ -144,7 +141,7 @@ func TestITOCEntry_GetMethods(t *testing.T) {
 	})
 
 	t.Run("GetNoCRC when zero", func(t *testing.T) {
-		entry.CRC = 0
+		entry.SetCRC(0)
 		if got := entry.GetNoCRC(); got {
 			t.Error("GetNoCRC() = true, want false")
 		}
@@ -155,35 +152,34 @@ func TestITOCEntry_ParseFields_EdgeCases(t *testing.T) {
 	t.Run("Partial data", func(t *testing.T) {
 		// Test with less than 32 bytes
 		entry := &ITOCEntry{}
-		// Only fill first few bytes
-		entry.Data[0] = 0x10 // Type
-
-		entry.ParseFields()
+		// Only fill first few bytes (type at start), then unmarshal what we have
+		buf, _ := hex.DecodeString("10")
+		_ = entry.Unmarshal(append(buf, make([]byte, 31)...))
 
 		// Should still parse what it can
 		if entry.Type != 0x10 {
 			t.Errorf("Type = 0x%02X, want 0x10", entry.Type)
 		}
 		// Other fields should be zero
-		if entry.Size != 0 {
-			t.Errorf("Size = %d, want 0", entry.Size)
+		if entry.GetSize() != 0 {
+			t.Errorf("Size = %d, want 0", entry.GetSize())
 		}
 	})
 
 	t.Run("CRC flag variations", func(t *testing.T) {
 		testCases := []struct {
-			name     string
-			data     string
+			name      string
+			data      string
 			wantNoCRC bool
 		}{
 			{
-				name:     "CRC flag clear",
-				data:     "1000060000000000000000000000000000000000000020000000123400000000",
+				name:      "CRC flag clear",
+				data:      "1000060000000000000000000000000000000000000020000000123400000000",
 				wantNoCRC: false,
 			},
 			{
-				name:     "CRC flag set",
-				data:     "1000060000000000000000000000000000000000000020000001123400000000",
+				name:      "CRC flag set",
+				data:      "1000060000000000000000000000000000000000000020000001123400000000",
 				wantNoCRC: true,
 			},
 		}
@@ -192,8 +188,9 @@ func TestITOCEntry_ParseFields_EdgeCases(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				data, _ := hex.DecodeString(tc.data)
 				entry := &ITOCEntry{}
-				copy(entry.Data[:], data)
-				entry.ParseFields()
+				if err := entry.Unmarshal(data); err != nil {
+					t.Fatalf("Unmarshal failed: %v", err)
+				}
 
 				if got := entry.GetNoCRC(); got != tc.wantNoCRC {
 					t.Errorf("GetNoCRC() = %v, want %v", got, tc.wantNoCRC)
@@ -218,7 +215,7 @@ func TestITOCEntry_SectionTypes(t *testing.T) {
 			entry := &ITOCEntry{
 				Type: sType,
 			}
-			
+
 			if got := entry.GetType(); got != uint16(sType) {
 				t.Errorf("GetType() = 0x%02X, want 0x%02X", got, sType)
 			}
@@ -258,17 +255,18 @@ func TestITOCEntry_RealWorldData(t *testing.T) {
 			}
 
 			entry := &ITOCEntry{}
-			copy(entry.Data[:], data)
-			entry.ParseFields()
+			if err := entry.Unmarshal(data); err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
 
 			// Basic sanity checks
-			if entry.Type == 0 && entry.Size == 0 && entry.FlashAddr == 0 {
+			if entry.Type == 0 && entry.GetSize() == 0 && entry.GetFlashAddr() == 0 {
 				t.Error("All fields are zero, parsing likely failed")
 			}
 
 			// Log parsed values for debugging
 			t.Logf("%s: Type=0x%02X, Size=0x%X, FlashAddr=0x%X, CRC=0x%04X, NoCRC=%v",
-				re.description, entry.Type, entry.Size, entry.FlashAddr, 
+				re.description, entry.Type, entry.GetSize(), entry.GetFlashAddr(),
 				entry.SectionCRC, entry.GetNoCRC())
 		})
 	}
@@ -277,36 +275,35 @@ func TestITOCEntry_RealWorldData(t *testing.T) {
 func BenchmarkITOCEntry_ParseFields(b *testing.B) {
 	// Benchmark parsing performance
 	data, _ := hex.DecodeString("10000006000000000002A00000000000000000000000000000000000009B48")
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		entry := &ITOCEntry{}
-		copy(entry.Data[:], data)
-		entry.ParseFields()
+		_ = entry.Unmarshal(data)
 	}
 }
 
 func TestITOCEntry_DataIntegrity(t *testing.T) {
-	// Test that raw data is preserved correctly
+	// Test that marshal/unmarshal preserves bytes
 	testData := "10000006000000000002A00000000000000000000000000000000000009B48"
 	data, _ := hex.DecodeString(testData)
-	
+
 	entry := &ITOCEntry{}
-	copy(entry.Data[:], data)
-	
-	// Verify data was copied correctly
-	for i, b := range data {
-		if entry.Data[i] != b {
-			t.Errorf("Data[%d] = 0x%02X, want 0x%02X", i, entry.Data[i], b)
-		}
+	if err := entry.Unmarshal(data); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
 	}
-	
-	// Parse and verify data is still intact
-	entry.ParseFields()
-	
-	for i, b := range data {
-		if entry.Data[i] != b {
-			t.Errorf("After parse: Data[%d] = 0x%02X, want 0x%02X", i, entry.Data[i], b)
+
+	out, err := entry.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	if len(out) != len(data) {
+		t.Fatalf("length mismatch: got %d, want %d", len(out), len(data))
+	}
+	for i := range out {
+		if out[i] != data[i] {
+			t.Errorf("byte[%d]=0x%02X, want 0x%02X", i, out[i], data[i])
 		}
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/ansel1/merry/v2"
 	"go.uber.org/zap"
 
-	"github.com/Civil/mlx5fw-go/pkg/errs"
+	pkgerrors "github.com/Civil/mlx5fw-go/pkg/errors"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
 
@@ -85,17 +85,17 @@ func (r *FirmwareReader) FindMagicPattern() (uint32, error) {
 			return offset, nil
 		}
 	}
-	return 0, errs.ErrInvalidMagic
+	return 0, pkgerrors.ErrInvalidMagic
 }
 
 // ReadSection reads a section of data from the firmware
 func (r *FirmwareReader) ReadSection(offset int64, size uint32) ([]byte, error) {
 	if offset < 0 || offset >= r.size {
-		return nil, merry.Wrap(errs.ErrInvalidOffset, merry.WithMessagef("offset %d is out of range [0, %d)", offset, r.size))
+		return nil, merry.Wrap(pkgerrors.ErrInvalidOffset, merry.WithMessagef("offset %d is out of range [0, %d)", offset, r.size))
 	}
-	
+
 	if int64(offset+int64(size)) > r.size {
-		return nil, merry.Wrap(errs.ErrInvalidSize, merry.WithMessagef("section at offset %d with size %d extends beyond file size %d", offset, size, r.size))
+		return nil, merry.Wrap(pkgerrors.ErrInvalidSize, merry.WithMessagef("section at offset %d with size %d extends beyond file size %d", offset, size, r.size))
 	}
 
 	buf := make([]byte, size)
@@ -120,11 +120,11 @@ func (r *FirmwareReader) GetFileInfo() (*FileInfo, error) {
 	if err != nil {
 		return nil, merry.Wrap(err)
 	}
-	
+
 	if _, err := io.Copy(hasher, r.file); err != nil {
 		return nil, merry.Wrap(err)
 	}
-	
+
 	return &FileInfo{
 		Size:   r.size,
 		SHA256: fmt.Sprintf("%x", hasher.Sum(nil)),

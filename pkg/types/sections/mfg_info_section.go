@@ -9,7 +9,7 @@ import (
 // MFGInfoSection represents a Manufacturing Info section
 type MFGInfoSection struct {
 	*interfaces.BaseSection
-	MfgInfo *types.MFGInfo `json:"mfg_info,omitempty"`
+	MfgInfo *types.MfgInfo `json:"mfg_info,omitempty"`
 }
 
 // NewMFGInfoSection creates a new MFG Info section
@@ -23,14 +23,13 @@ func NewMFGInfoSection(base *interfaces.BaseSection) *MFGInfoSection {
 // Parse parses the MFG Info section data
 func (s *MFGInfoSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
-	s.MfgInfo = &types.MFGInfo{}
-	
+
+	s.MfgInfo = &types.MfgInfo{}
+
 	if err := s.MfgInfo.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	s.HasRawData = false // Successfully parsed
 	return nil
 }
-

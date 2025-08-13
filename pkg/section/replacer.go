@@ -16,13 +16,13 @@ const (
 	// Firmware size limits
 	FirmwareSize32MB = 32 * 1024 * 1024 // 32MB for older cards
 	FirmwareSize64MB = 64 * 1024 * 1024 // 64MB for newer cards
-	
+
 	// ITOC entry size
 	ITOCEntrySize = 32
-	
+
 	// Entry size in dwords conversion
 	DwordSize = 4
-	
+
 	// CRC sizes
 	CRCDwordSize = 7 // 28 bytes = 7 dwords for ITOC/DTOC CRC
 )
@@ -56,7 +56,7 @@ func (r *Replacer) ReplaceSection(targetSection interfaces.CompleteSectionInterf
 	if sizeDiff > 0 {
 		newTotalSize := len(r.firmwareData) + int(sizeDiff)
 		if newTotalSize > fwSizeLimit {
-			return nil, merry.Errorf("firmware size would exceed limit: %d bytes > %d MB limit", 
+			return nil, merry.Errorf("firmware size would exceed limit: %d bytes > %d MB limit",
 				newTotalSize, fwSizeLimit/(1024*1024))
 		}
 	}
@@ -68,13 +68,13 @@ func (r *Replacer) ReplaceSection(targetSection interfaces.CompleteSectionInterf
 	if sizeDiff == 0 {
 		// Simple case: same size replacement
 		copy(workingData[targetSection.Offset():], newData)
-		
+
 		// Update CRC
 		err := r.updateSectionCRC(workingData, targetSection, newSize)
 		if err != nil {
 			return nil, merry.Wrap(err)
 		}
-		
+
 		// Pad firmware to proper size
 		workingData = r.padFirmware(workingData)
 		return workingData, nil
@@ -87,7 +87,7 @@ func (r *Replacer) ReplaceSection(targetSection interfaces.CompleteSectionInterf
 	// Get parser internals through reflection or exposed methods
 	itocAddr := r.parser.GetITOCAddress()
 	dtocAddr := r.parser.GetDTOCAddress()
-	
+
 	// Build relocation map
 	relocMap, err := r.buildRelocationMap(targetSection, sizeDiff, itocAddr, dtocAddr)
 	if err != nil {
@@ -107,7 +107,7 @@ func (r *Replacer) ReplaceSection(targetSection interfaces.CompleteSectionInterf
 				zap.Uint32("newOffset", reloc.newOffset),
 				zap.Uint32("size", reloc.size))
 		}
-		
+
 		if maxNewEnd > uint32(len(workingData)) {
 			newWorkingData := make([]byte, maxNewEnd)
 			copy(newWorkingData, workingData)
@@ -139,7 +139,7 @@ func (r *Replacer) ReplaceSection(targetSection interfaces.CompleteSectionInterf
 // determineFirmwareSizeLimit determines the firmware size limit based on DTOC location
 func (r *Replacer) determineFirmwareSizeLimit() int {
 	fileSize := len(r.firmwareData)
-	
+
 	// Check for specific sizes that indicate card type
 	if fileSize >= 0x2000000 && fileSize <= 0x2000000+0x100000 { // ~32MB
 		return FirmwareSize32MB
@@ -159,24 +159,24 @@ func (r *Replacer) determineFirmwareSizeLimit() int {
 func (r *Replacer) padFirmware(data []byte) []byte {
 	targetSize := r.determineFirmwareSizeLimit()
 	currentSize := len(data)
-	
+
 	if currentSize >= targetSize {
 		return data[:targetSize]
 	}
-	
+
 	// Create padded firmware
 	paddedData := make([]byte, targetSize)
 	copy(paddedData, data)
-	
+
 	// Fill remaining with 0xFF
 	for i := currentSize; i < targetSize; i++ {
 		paddedData[i] = 0xFF
 	}
-	
+
 	r.logger.Info("Padded firmware to target size",
 		zap.Int("originalSize", currentSize),
 		zap.Int("targetSize", targetSize))
-	
+
 	return paddedData
 }
 
@@ -194,7 +194,7 @@ type relocationInfo struct {
 // buildRelocationMap builds a map of all sections that need relocation
 func (r *Replacer) buildRelocationMap(targetSection interfaces.SectionInterface, sizeDiff int32, itocAddr, dtocAddr uint32) (map[uint32]*relocationInfo, error) {
 	relocMap := make(map[uint32]*relocationInfo)
-	
+
 	// Process ITOC sections
 	itocSections, err := r.readTOCSections(itocAddr, false)
 	if err != nil {
@@ -205,7 +205,7 @@ func (r *Replacer) buildRelocationMap(targetSection interfaces.SectionInterface,
 		if entry.GetFlashAddr() == 0 || entry.GetType() == 0xFF {
 			continue
 		}
-		
+
 		reloc := &relocationInfo{
 			newOffset:   entry.GetFlashAddr(),
 			size:        entry.GetSize(),
@@ -214,12 +214,12 @@ func (r *Replacer) buildRelocationMap(targetSection interfaces.SectionInterface,
 			isITOC:      true,
 			entryIndex:  i,
 		}
-		
+
 		// Relocate if after target section
 		if entry.GetFlashAddr() > uint32(targetSection.Offset()) {
 			reloc.newOffset = uint32(int32(entry.GetFlashAddr()) + sizeDiff)
 		}
-		
+
 		relocMap[entry.GetFlashAddr()] = reloc
 	}
 
@@ -231,12 +231,12 @@ func (r *Replacer) buildRelocationMap(targetSection interfaces.SectionInterface,
 				if entry.GetFlashAddr() == 0 || entry.GetType() == 0xFF {
 					continue
 				}
-				
+
 				// Don't duplicate entries already in relocMap
 				if _, exists := relocMap[entry.GetFlashAddr()]; exists {
 					continue
 				}
-				
+
 				reloc := &relocationInfo{
 					newOffset:   entry.GetFlashAddr(),
 					size:        entry.GetSize(),
@@ -245,12 +245,12 @@ func (r *Replacer) buildRelocationMap(targetSection interfaces.SectionInterface,
 					isDTOC:      true,
 					entryIndex:  i,
 				}
-				
+
 				// Relocate if after target section
 				if entry.GetFlashAddr() > uint32(targetSection.Offset()) {
 					reloc.newOffset = uint32(int32(entry.GetFlashAddr()) + sizeDiff)
 				}
-				
+
 				relocMap[entry.GetFlashAddr()] = reloc
 			}
 		}
@@ -269,7 +269,6 @@ func (r *Replacer) readTOCSections(tocAddr uint32, isDTOC bool) ([]*types.ITOCEn
 	return r.tocReader.ReadTOCRawEntries(r.firmwareData, tocAddr, isDTOC)
 }
 
-
 // relocateSections moves section data to new offsets
 func (r *Replacer) relocateSections(workingData []byte, relocMap map[uint32]*relocationInfo, targetOffset uint64, sizeDiff int32) error {
 	// Create sorted list of sections by offset
@@ -277,7 +276,7 @@ func (r *Replacer) relocateSections(workingData []byte, relocMap map[uint32]*rel
 	for offset := range relocMap {
 		sortedOffsets = append(sortedOffsets, offset)
 	}
-	
+
 	// Sort offsets
 	for i := 0; i < len(sortedOffsets)-1; i++ {
 		for j := i + 1; j < len(sortedOffsets); j++ {
@@ -293,16 +292,16 @@ func (r *Replacer) relocateSections(workingData []byte, relocMap map[uint32]*rel
 		for i := len(sortedOffsets) - 1; i >= 0; i-- {
 			oldOffset := sortedOffsets[i]
 			reloc := relocMap[oldOffset]
-			
+
 			if oldOffset <= uint32(targetOffset) || oldOffset == reloc.newOffset {
 				continue
 			}
-			
+
 			// Move section data
 			sectionData := make([]byte, reloc.size)
 			copy(sectionData, workingData[oldOffset:oldOffset+reloc.size])
 			copy(workingData[reloc.newOffset:], sectionData)
-			
+
 			r.logger.Debug("Relocated section",
 				zap.Uint32("oldOffset", oldOffset),
 				zap.Uint32("newOffset", reloc.newOffset),
@@ -312,14 +311,14 @@ func (r *Replacer) relocateSections(workingData []byte, relocMap map[uint32]*rel
 		// Shrinking - move from beginning to end
 		for _, oldOffset := range sortedOffsets {
 			reloc := relocMap[oldOffset]
-			
+
 			if oldOffset <= uint32(targetOffset) || oldOffset == reloc.newOffset {
 				continue
 			}
-			
+
 			// Move section data
 			copy(workingData[reloc.newOffset:], workingData[oldOffset:oldOffset+reloc.size])
-			
+
 			r.logger.Debug("Relocated section",
 				zap.Uint32("oldOffset", oldOffset),
 				zap.Uint32("newOffset", reloc.newOffset),
@@ -407,7 +406,7 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 			entry.SetSize(newSize)
 			r.logger.Info("Updating target section in ITOC",
 				zap.Uint32("offset", entry.GetFlashAddr()),
-				zap.Uint32("oldSize", reloc.size), 
+				zap.Uint32("oldSize", reloc.size),
 				zap.Uint32("newSize", newSize))
 		}
 
@@ -419,19 +418,19 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 			if targetSection != nil && entry.GetFlashAddr() == uint32(targetSection.Offset()) {
 				sectionSize = newSize
 			}
-			
+
 			if sectionOffset+sectionSize <= uint32(len(workingData)) {
 				sectionData := workingData[sectionOffset : sectionOffset+sectionSize]
-				
+
 				// Align to dwords and calculate CRC
 				alignedSize := (sectionSize + 3) & ^uint32(3)
 				paddedData := make([]byte, alignedSize)
 				copy(paddedData, sectionData)
-				
+
 				sizeInDwords := alignedSize / DwordSize
 				sectionCRC := crcCalc.CalculateImageCRC(paddedData, int(sizeInDwords))
 				entry.SectionCRC = sectionCRC
-				
+
 				r.logger.Debug("Calculated section CRC for ITOC entry",
 					zap.Uint16("type", reloc.sectionType),
 					zap.Uint16("crc", sectionCRC),
@@ -451,7 +450,7 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 		// Use Software CRC16 (CalculateImageCRC) for ITOC entries - same as mstflint
 		// CRC is calculated over first 28 bytes (7 dwords) of the 32-byte entry
 		entryCRCData := workingData[entryOffset : entryOffset+28]
-		entryCRC := crcCalc.CalculateImageCRC(entryCRCData, CRCDwordSize)  
+		entryCRC := crcCalc.CalculateImageCRC(entryCRCData, CRCDwordSize)
 		// Store CRC in last 2 bytes of the entry (offset 30-31)
 		binary.BigEndian.PutUint16(workingData[entryOffset+30:entryOffset+32], entryCRC)
 	}
@@ -461,9 +460,9 @@ func (r *Replacer) updateTOCEntries(workingData []byte, relocMap map[uint32]*rel
 	// The CRC is stored as 16-bit value in the lower half of the 32-bit field
 	headerCRCData := workingData[tocAddr : tocAddr+28]
 	headerCRC := crcCalc.CalculateImageCRC(headerCRCData, CRCDwordSize)
-	
+
 	// Keep upper 16 bits unchanged, update lower 16 bits with CRC
-	currentCRCField := binary.BigEndian.Uint32(workingData[tocAddr+28:tocAddr+32])
+	currentCRCField := binary.BigEndian.Uint32(workingData[tocAddr+28 : tocAddr+32])
 	newCRCField := (currentCRCField & 0xFFFF0000) | uint32(headerCRC)
 	binary.BigEndian.PutUint32(workingData[tocAddr+28:tocAddr+32], newCRCField)
 
@@ -481,13 +480,12 @@ func (r *Replacer) serializeITOCEntry(entry *types.ITOCEntry, data []byte) error
 	if err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	// Copy marshaled data
 	copy(data, marshaledData)
-	
+
 	return nil
 }
-
 
 // updateHWPointers updates hardware pointers that reference relocated sections
 func (r *Replacer) updateHWPointers(workingData []byte, relocMap map[uint32]*relocationInfo) error {
@@ -557,7 +555,7 @@ func (r *Replacer) findMagicPattern(data []byte) (uint32, error) {
 		if offset+8 > uint32(len(data)) {
 			continue
 		}
-		
+
 		if binary.BigEndian.Uint64(data[offset:offset+8]) == types.MagicPattern {
 			return offset, nil
 		}
@@ -574,7 +572,7 @@ func (r *Replacer) writeHWPointers(data []byte, hw *types.FS4HWPointers) {
 		r.logger.Error("Failed to marshal HW pointers", zap.Error(err))
 		return
 	}
-	
+
 	// Copy marshaled data
 	copy(data, marshaledData)
 }
@@ -584,7 +582,7 @@ func (r *Replacer) updateSectionCRC(workingData []byte, section interfaces.Secti
 	switch section.CRCType() {
 	case types.CRCNone:
 		return nil
-		
+
 	case types.CRCInITOCEntry:
 		// For CRCInITOCEntry, the CRC is stored in the ITOC entry's SectionCRC field
 		// We'll handle this in updateTOCEntries where we have access to the entry
@@ -593,7 +591,7 @@ func (r *Replacer) updateSectionCRC(workingData []byte, section interfaces.Secti
 			zap.Uint32("offset", uint32(section.Offset())),
 			zap.Uint32("size", newSize))
 		return nil
-		
+
 	case types.CRCInSection:
 		// CRC at end of section
 		if newSize < 4 {
@@ -607,7 +605,7 @@ func (r *Replacer) updateSectionCRC(workingData []byte, section interfaces.Secti
 		crcSizeInDwords := (newSize / DwordSize) - 1
 		alignedSize := crcSizeInDwords * DwordSize
 		crcData := sectionData[:alignedSize]
-		
+
 		// Ensure data is aligned
 		if len(crcData) != int(alignedSize) {
 			paddedData := make([]byte, alignedSize)
@@ -627,7 +625,7 @@ func (r *Replacer) updateSectionCRC(workingData []byte, section interfaces.Secti
 			zap.String("type", types.GetSectionTypeName(section.Type())),
 			zap.Uint16("crc", newCRC))
 		return nil
-		
+
 	default:
 		return merry.Errorf("unknown CRC type: %d", section.CRCType())
 	}

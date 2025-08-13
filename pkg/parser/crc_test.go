@@ -95,7 +95,7 @@ func TestCRCWithRealData(t *testing.T) {
 	// Size: 0x2590 bytes (9616 bytes = 2404 dwords)
 	sectionSize := 0x2590
 	data := make([]byte, sectionSize)
-	
+
 	// Fill with pattern
 	for i := 0; i < len(data); i++ {
 		data[i] = byte(i & 0xFF)
@@ -106,7 +106,7 @@ func TestCRCWithRealData(t *testing.T) {
 	crcSizeInDwords := sizeInDwords - 1
 
 	calculatedCRC := crc.CalculateImageCRC(data, crcSizeInDwords)
-	
+
 	// CRC should be a valid 16-bit value
 	if calculatedCRC > 0xFFFF {
 		t.Errorf("CalculateImageCRC() returned invalid CRC: 0x%X", calculatedCRC)
@@ -125,10 +125,10 @@ func TestCRCEdgeCases(t *testing.T) {
 	t.Run("Data not aligned to dword", func(t *testing.T) {
 		// Test with 5 bytes (not divisible by 4)
 		data := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-		
+
 		// Calculate CRC for 1 dword (first 4 bytes)
 		result := crc.CalculateImageCRC(data, 1)
-		
+
 		// Should only process first 4 bytes
 		expected := crc.CalculateImageCRC(data[:4], 1)
 		if result != expected {
@@ -139,10 +139,10 @@ func TestCRCEdgeCases(t *testing.T) {
 	t.Run("Size larger than data", func(t *testing.T) {
 		// Test with 4 bytes but request 2 dwords
 		data := []byte{0x01, 0x02, 0x03, 0x04}
-		
+
 		// This should handle gracefully
 		result := crc.CalculateImageCRC(data, 2)
-		
+
 		// Result should be valid (implementation dependent)
 		if result > 0xFFFF {
 			t.Errorf("Invalid CRC result: 0x%X", result)
@@ -152,7 +152,7 @@ func TestCRCEdgeCases(t *testing.T) {
 
 func BenchmarkCalculateImageCRC(b *testing.B) {
 	crc := NewCRCCalculator()
-	
+
 	// Test with 64KB of data (typical section size)
 	data := make([]byte, 64*1024)
 	for i := range data {
@@ -168,18 +168,18 @@ func BenchmarkCalculateImageCRC(b *testing.B) {
 
 func TestCRCTablesInitialization(t *testing.T) {
 	crc := NewCRCCalculator()
-	
+
 	// Test that CRC tables are properly initialized
 	// We can't directly access the tables, but we can verify
 	// that calculations work correctly
-	
+
 	// Known test vector
 	testData, _ := hex.DecodeString("123456789")
-	
+
 	// Calculate CRC
 	imageCRC := crc.CalculateImageCRC(testData, len(testData)/4)
 	hwCRC := crc.CalculateHardwareCRC(testData)
-	
+
 	// Both should produce valid CRCs
 	if imageCRC > 0xFFFF {
 		t.Errorf("Invalid image CRC: 0x%X", imageCRC)

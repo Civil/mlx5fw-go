@@ -10,7 +10,7 @@ import (
 
 // GetSectionDescription returns a formatted description of a section using only metadata
 func GetSectionDescription(section interfaces.SectionMetadata) string {
-	return fmt.Sprintf("%s at offset 0x%x (size: 0x%x)", 
+	return fmt.Sprintf("%s at offset 0x%x (size: 0x%x)",
 		section.TypeName(), section.Offset(), section.Size())
 }
 
@@ -25,12 +25,12 @@ func IsSectionValid(section interfaces.SectionReader) bool {
 	if section.Type() == 0 {
 		return false
 	}
-	
+
 	// For sections without CRC, they're considered valid if basic checks pass
 	if !section.HasCRC() {
 		return true
 	}
-	
+
 	// For sections with CRC, we can't fully validate without loading data
 	// This is just a basic sanity check
 	return true
@@ -53,7 +53,7 @@ func GetSectionSummary(sections []interfaces.SectionReader) []string {
 	for _, section := range sections {
 		summary := fmt.Sprintf("Type: %s, Offset: 0x%08x, Size: 0x%x, Encrypted: %v",
 			section.TypeName(),
-			section.Offset(), 
+			section.Offset(),
 			section.Size(),
 			section.IsEncrypted())
 		summaries = append(summaries, summary)
@@ -78,16 +78,16 @@ func ValidateCRCInfo(section interfaces.SectionReader) error {
 	if !section.HasCRC() {
 		return nil
 	}
-	
+
 	// For sections with CRC, we can't validate the actual CRC without data
 	// Some sections (like BOOT2, TOOLS_AREA, DEV_INFO) may have CRC value of 0
 	// which is computed differently. This is not an error.
-	
+
 	// Basic consistency check
 	if section.CRCType() == types.CRCNone && section.HasCRC() {
 		return fmt.Errorf("section reports HasCRC() but CRCType is NONE")
 	}
-	
+
 	return nil
 }
 
@@ -122,48 +122,48 @@ func CalculateTotalSize(sections []interfaces.SectionMetadata) uint64 {
 // FindOverlappingSections finds sections that overlap in memory
 func FindOverlappingSections(sections []interfaces.SectionMetadata) [][]interfaces.SectionMetadata {
 	var overlapping [][]interfaces.SectionMetadata
-	
+
 	for i := 0; i < len(sections); i++ {
 		for j := i + 1; j < len(sections); j++ {
 			s1, s2 := sections[i], sections[j]
 			s1End := s1.Offset() + uint64(s1.Size())
 			s2End := s2.Offset() + uint64(s2.Size())
-			
+
 			// Check if sections overlap
 			if s1.Offset() < s2End && s2.Offset() < s1End {
 				overlapping = append(overlapping, []interfaces.SectionMetadata{s1, s2})
 			}
 		}
 	}
-	
+
 	return overlapping
 }
 
 // GenerateSectionReport generates a detailed report about sections
 func GenerateSectionReport(sections []interfaces.SectionReader) string {
 	var report strings.Builder
-	
+
 	report.WriteString("Section Report\n")
 	report.WriteString("==============\n\n")
-	
+
 	// Group by type
 	groups := make(map[string][]interfaces.SectionReader)
 	for _, section := range sections {
 		typeName := section.TypeName()
 		groups[typeName] = append(groups[typeName], section)
 	}
-	
+
 	// Report by type
 	for typeName, typeSections := range groups {
 		report.WriteString(fmt.Sprintf("%s (%d sections):\n", typeName, len(typeSections)))
 		for _, section := range typeSections {
-			report.WriteString(fmt.Sprintf("  - Offset: 0x%08x, Size: 0x%x", 
+			report.WriteString(fmt.Sprintf("  - Offset: 0x%08x, Size: 0x%x",
 				section.Offset(), section.Size()))
-			
+
 			if section.HasCRC() {
 				report.WriteString(fmt.Sprintf(", CRC: 0x%08x", section.GetCRC()))
 			}
-			
+
 			var flags []string
 			if section.IsEncrypted() {
 				flags = append(flags, "encrypted")
@@ -174,20 +174,20 @@ func GenerateSectionReport(sections []interfaces.SectionReader) string {
 			if section.IsFromHWPointer() {
 				flags = append(flags, "hw-pointer")
 			}
-			
+
 			if len(flags) > 0 {
 				report.WriteString(fmt.Sprintf(" [%s]", strings.Join(flags, ", ")))
 			}
-			
+
 			report.WriteString("\n")
 		}
 		report.WriteString("\n")
 	}
-	
+
 	// Summary
 	report.WriteString(fmt.Sprintf("Total sections: %d\n", len(sections)))
 	report.WriteString(fmt.Sprintf("Total size: 0x%x bytes\n", CalculateTotalSize(toMetadataSlice(sections))))
-	
+
 	return report.String()
 }
 

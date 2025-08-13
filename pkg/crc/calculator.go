@@ -120,12 +120,12 @@ func (h *DefaultCRCHandler) VerifyCRC(data []byte, expectedCRC uint32, crcType t
 	if err != nil {
 		return err
 	}
-	
+
 	// Only compare lower 16 bits for CRC16
 	if (expectedCRC & 0xFFFF) != (calculatedCRC & 0xFFFF) {
 		return errors.CRCMismatchError(expectedCRC&0xFFFF, calculatedCRC&0xFFFF, "section")
 	}
-	
+
 	return nil
 }
 

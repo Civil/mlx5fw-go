@@ -119,11 +119,11 @@ func NewBaseSectionWithOptions(sectionType uint16, offset uint64, size uint32, o
 		SectionCRCType: types.CRCNone,
 		hasCRC:         false,
 	}
-	
+
 	// Apply options
 	for _, opt := range opts {
 		opt(bs)
 	}
-	
+
 	return bs
 }

@@ -33,17 +33,17 @@ func marshalStruct(v interface{}, order binary.ByteOrder) ([]byte, error) {
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
-	
+
 	if val.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
 	}
-	
+
 	buf := new(bytes.Buffer)
-	
+
 	// Walk through struct fields
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
-		
+
 		// Handle different field types
 		switch field.Kind() {
 		case reflect.Array:
@@ -69,6 +69,6 @@ func marshalStruct(v interface{}, order binary.ByteOrder) ([]byte, error) {
 			}
 		}
 	}
-	
+
 	return buf.Bytes(), nil
 }

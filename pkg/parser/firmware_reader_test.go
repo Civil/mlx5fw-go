@@ -20,40 +20,40 @@ func createTestFile(t *testing.T, content []byte) string {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	
+
 	if _, err := tmpfile.Write(content); err != nil {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
 		t.Fatalf("Failed to write to temp file: %v", err)
 	}
-	
+
 	if err := tmpfile.Close(); err != nil {
 		os.Remove(tmpfile.Name())
 		t.Fatalf("Failed to close temp file: %v", err)
 	}
-	
+
 	return tmpfile.Name()
 }
 
 func TestNewFirmwareReader(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	t.Run("Valid file", func(t *testing.T) {
 		content := []byte("test firmware content")
 		filename := createTestFile(t, content)
 		defer os.Remove(filename)
-		
+
 		reader, err := NewFirmwareReader(filename, logger)
 		if err != nil {
 			t.Fatalf("NewFirmwareReader() error = %v", err)
 		}
 		defer reader.Close()
-		
+
 		if reader.Size() != int64(len(content)) {
 			t.Errorf("Size() = %v, want %v", reader.Size(), len(content))
 		}
 	})
-	
+
 	t.Run("Non-existent file", func(t *testing.T) {
 		reader, err := NewFirmwareReader("/non/existent/file.bin", logger)
 		if err == nil {
@@ -68,13 +68,13 @@ func TestFirmwareReader_ReadAt(t *testing.T) {
 	content := []byte("0123456789ABCDEF")
 	filename := createTestFile(t, content)
 	defer os.Remove(filename)
-	
+
 	reader, err := NewFirmwareReader(filename, logger)
 	if err != nil {
 		t.Fatalf("NewFirmwareReader() error = %v", err)
 	}
 	defer reader.Close()
-	
+
 	tests := []struct {
 		name      string
 		offset    int64
@@ -107,12 +107,12 @@ func TestFirmwareReader_ReadAt(t *testing.T) {
 			expectErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := make([]byte, tt.length)
 			n, err := reader.ReadAt(buf, tt.offset)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Error("ReadAt() expected error but got none")
@@ -132,11 +132,9 @@ func TestFirmwareReader_ReadAt(t *testing.T) {
 	}
 }
 
-
-
 func TestFirmwareReader_FindMagicPattern(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
 		name           string
 		createContent  func() []byte
@@ -180,21 +178,21 @@ func TestFirmwareReader_FindMagicPattern(t *testing.T) {
 			expectedOffset: 0x10000, // Should find first occurrence
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			content := tt.createContent()
 			filename := createTestFile(t, content)
 			defer os.Remove(filename)
-			
+
 			reader, err := NewFirmwareReader(filename, logger)
 			if err != nil {
 				t.Fatalf("NewFirmwareReader() error = %v", err)
 			}
 			defer reader.Close()
-			
+
 			offset, err := reader.FindMagicPattern()
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Error("FindMagicPattern() expected error but got none")
@@ -213,21 +211,21 @@ func TestFirmwareReader_FindMagicPattern(t *testing.T) {
 
 func TestFirmwareReader_ReadSection(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	content := make([]byte, 0x1000)
 	for i := range content {
 		content[i] = byte(i & 0xFF)
 	}
-	
+
 	filename := createTestFile(t, content)
 	defer os.Remove(filename)
-	
+
 	reader, err := NewFirmwareReader(filename, logger)
 	if err != nil {
 		t.Fatalf("NewFirmwareReader() error = %v", err)
 	}
 	defer reader.Close()
-	
+
 	tests := []struct {
 		name      string
 		offset    int64
@@ -274,11 +272,11 @@ func TestFirmwareReader_ReadSection(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			data, err := reader.ReadSection(tt.offset, tt.size)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Error("ReadSection() expected error but got none")
@@ -297,20 +295,20 @@ func TestFirmwareReader_ReadSection(t *testing.T) {
 
 func TestFirmwareReader_Close(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	filename := createTestFile(t, []byte("test"))
 	defer os.Remove(filename)
-	
+
 	reader, err := NewFirmwareReader(filename, logger)
 	if err != nil {
 		t.Fatalf("NewFirmwareReader() error = %v", err)
 	}
-	
+
 	// Close should work
 	if err := reader.Close(); err != nil {
 		t.Errorf("Close() error = %v", err)
 	}
-	
+
 	// Close again should be safe
 	if err := reader.Close(); err != nil {
 		t.Errorf("Second Close() error = %v", err)
@@ -318,30 +316,30 @@ func TestFirmwareReader_Close(t *testing.T) {
 }
 func BenchmarkFirmwareReader_ReadSection(b *testing.B) {
 	logger := zap.NewNop()
-	
+
 	// Create a 1MB test file
 	content := make([]byte, 1024*1024)
 	for i := range content {
 		content[i] = byte(i)
 	}
-	
+
 	tmpfile, err := os.CreateTemp("", "benchmark_*.bin")
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer os.Remove(tmpfile.Name())
-	
+
 	if _, err := tmpfile.Write(content); err != nil {
 		b.Fatal(err)
 	}
 	tmpfile.Close()
-	
+
 	reader, err := NewFirmwareReader(tmpfile.Name(), logger)
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer reader.Close()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Read 64KB sections at different offsets
@@ -357,50 +355,50 @@ func TestFirmwareReader_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// This test would use actual firmware files if available
 	// For now, we'll create a mock firmware structure
 	logger := zaptest.NewLogger(t)
-	
+
 	// Create a mock FS4 firmware structure
 	var firmware bytes.Buffer
-	
+
 	// Add padding before magic - use a standard search offset
 	firmware.Write(make([]byte, 0x10000))
-	
+
 	// Add magic pattern
 	magicBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(magicBytes, types.MagicPattern)
 	firmware.Write(magicBytes)
-	
+
 	// Add some padding
 	firmware.Write(make([]byte, 0x10))
-	
+
 	// Add HW pointers at offset 0x18 from magic
 	hwPtrs := make([]byte, 128)
-	binary.BigEndian.PutUint32(hwPtrs[0x00:], 0x0000)     // Boot record
-	binary.BigEndian.PutUint32(hwPtrs[0x08:], 0x2000)     // Boot2
-	binary.BigEndian.PutUint32(hwPtrs[0x10:], 0x5000)     // TOC
-	binary.BigEndian.PutUint32(hwPtrs[0x18:], 0x5000)     // Tools
+	binary.BigEndian.PutUint32(hwPtrs[0x00:], 0x0000) // Boot record
+	binary.BigEndian.PutUint32(hwPtrs[0x08:], 0x2000) // Boot2
+	binary.BigEndian.PutUint32(hwPtrs[0x10:], 0x5000) // TOC
+	binary.BigEndian.PutUint32(hwPtrs[0x18:], 0x5000) // Tools
 	firmware.Write(hwPtrs)
-	
+
 	// Pad to make file larger - must be larger than the magic offset
 	targetSize := 0x20000
 	if firmware.Len() < targetSize {
 		firmware.Write(make([]byte, targetSize-firmware.Len()))
 	}
-	
+
 	filename := filepath.Join(t.TempDir(), "test_firmware.bin")
 	if err := os.WriteFile(filename, firmware.Bytes(), 0644); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	reader, err := NewFirmwareReader(filename, logger)
 	if err != nil {
 		t.Fatalf("NewFirmwareReader() error = %v", err)
 	}
 	defer reader.Close()
-	
+
 	// Test finding magic
 	magicOffset, err := reader.FindMagicPattern()
 	if err != nil {
@@ -409,13 +407,13 @@ func TestFirmwareReader_Integration(t *testing.T) {
 	if magicOffset != 0x10000 {
 		t.Errorf("FindMagicPattern() = 0x%X, want 0x10000", magicOffset)
 	}
-	
+
 	// Test reading HW pointers
 	hwData, err := reader.ReadSection(int64(magicOffset+0x18), 128)
 	if err != nil {
 		t.Fatalf("ReadSection() error = %v", err)
 	}
-	
+
 	// Verify Boot2 pointer
 	boot2Ptr := binary.BigEndian.Uint32(hwData[0x08:0x0C])
 	if boot2Ptr != 0x2000 {

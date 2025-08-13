@@ -1,0 +1,32 @@
++ BDF=0000:07:00.0
++ sudo ./mlx5fw-go debug space-check -d 0000:07:00.0
+2025-08-10T00:23:37.094+0200	[34mINFO[0m	mlx5fw-go/debug.go:326	Device opened	{"backend": "sysfs"}
+space cr         0x002: OK
+space icmd       0x003: OK
+space icmd_ext   0x001: OK
+space semaphore  0x00a: OK
+space pci_cr     0x102: error=space 0x102 not accepted (read back 0x2)
+space pci_icmd   0x101: error=space 0x101 not accepted (read back 0x1)
+space pci_gsem   0x10a: error=space 0x10a not accepted (read back 0xa)
++ sudo ./mlx5fw-go debug read32 -d 0000:07:00.0 -s icmd -o 0x0 -c 4
+2025-08-10T00:23:37.115+0200	[34mINFO[0m	mlx5fw-go/debug.go:45	Device opened	{"backend": "sysfs"}
+2025-08-10T00:23:37.115+0200	[34mINFO[0m	mlx5fw-go/debug.go:48	pciconf.read32.begin	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 0, "count": 4}
+2025-08-10T00:23:37.115+0200	[34mINFO[0m	mlx5fw-go/debug.go:68	pciconf.read32.ok	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 0, "value": 2415985664}
+0x00000000: 0x90010400
+2025-08-10T00:23:37.116+0200	[34mINFO[0m	mlx5fw-go/debug.go:68	pciconf.read32.ok	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 4, "value": 2415985664}
+0x00000004: 0x90010400
+2025-08-10T00:23:37.116+0200	[34mINFO[0m	mlx5fw-go/debug.go:68	pciconf.read32.ok	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 8, "value": 0}
+0x00000008: 0x00000000
+2025-08-10T00:23:37.116+0200	[34mINFO[0m	mlx5fw-go/debug.go:68	pciconf.read32.ok	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 12, "value": 0}
+0x0000000c: 0x00000000
++ sudo ./mlx5fw-go debug readblock -d 0000:07:00.0 -s icmd -o 0x100000 -n 32
+2025-08-10T00:23:37.135+0200	[34mINFO[0m	mlx5fw-go/debug.go:169	Device opened	{"backend": "sysfs"}
+2025-08-10T00:23:37.135+0200	[34mINFO[0m	mlx5fw-go/debug.go:170	pciconf.readblock.begin	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 1048576, "size": 32}
+2025-08-10T00:23:37.137+0200	[34mINFO[0m	mlx5fw-go/debug.go:189	pciconf.readblock.ok	{"device": "0000:07:00.0", "backend": "sysfs", "space": 3, "offset": 1048576, "size": 32}
+0x00100000:  53 ff 00 f0  53 ff 00 f0  c3 e2 00 f0  53 ff 00 f0
+0x00100010:  53 ff 00 f0  54 ff 00 f0  53 ff 00 f0  53 ff 00 f0
++ sudo ./mlx5fw-go debug ar get --reg mgir --raw -d 0000:07:00.0 -v
+2025-08-10T00:23:37.156+0200	[34mINFO[0m	mlx5fw-go/debug_ar.go:75	Device opened	{"backend": "sysfs"}
+2025-08-10T00:23:37.156+0200	[34mINFO[0m	mlx5fw-go/debug_ar.go:89	ar.get.begin	{"device": "0000:07:00.0", "backend": "sysfs", "reg": "mgir", "reg_id": 36896, "size": 160}
+2025-08-10T00:23:42.371+0200	[31mERROR[0m	mlx5fw-go/debug_ar.go:95	ar.get.error	{"error": "icmd timeout waiting for busy clear", "ctrl_before": 2415985664, "ctrl_after": 2415985664}
+2025-08-10T00:23:42.372+0200	[31mERROR[0m	mlx5fw-go/main.go:265	Command execution failed	{"error": "icmd timeout waiting for busy clear"}

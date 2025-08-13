@@ -6,14 +6,20 @@ import (
 
 	"github.com/spf13/cobra"
 
+	cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 )
 
 func runQueryCommand(cmd *cobra.Command, args []string, fullOutput bool, jsonOutput bool) error {
-	logger.Info("Starting query command")
+	logger.Debug("Starting query command")
+
+	// Device mode takes precedence when --device is provided
+	if deviceBDF != "" {
+		return runQueryDeviceCommand(cmd, args, fullOutput, jsonOutput)
+	}
 
 	// Initialize firmware parser
-	ctx, err := InitializeFirmwareParser(firmwarePath, logger)
+	ctx, err := cliutil.InitializeFirmwareParser(firmwarePath, logger)
 	if err != nil {
 		return err
 	}
@@ -24,7 +30,11 @@ func runQueryCommand(cmd *cobra.Command, args []string, fullOutput bool, jsonOut
 	// Check ITOC validity
 	hasInvalidITOC := false
 	if !fs4Parser.IsITOCValid() {
-		logger.Warn("ITOC header CRC verification failed - firmware may be corrupted")
+		if fs4Parser.IsEncrypted() {
+			logger.Debug("ITOC header CRC verification failed (expected for encrypted firmware)")
+		} else {
+			logger.Warn("ITOC header CRC verification failed - firmware may be corrupted")
+		}
 		hasInvalidITOC = true
 	}
 
@@ -54,7 +64,7 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 		jsonData := convertToQueryJSON(info)
 		return outputJSON(jsonData)
 	}
-	
+
 	// Match mstflint output format
 	fmt.Printf("Image type:            %s\n", info.Format)
 	fmt.Printf("FW Version:            %s\n", info.FWVersion)
@@ -63,11 +73,11 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 	fmt.Printf("PRS Name:              %s\n", info.PRSName)
 	fmt.Printf("Part Number:           %s\n", info.PartNumber)
 	fmt.Printf("Description:           %s\n", info.Description)
-	
+
 	if info.ProductVersion != "" {
 		fmt.Printf("Product Version:       %s\n", info.ProductVersion)
 	}
-	
+
 	// Display ROM info if available
 	if len(info.RomInfo) > 0 {
 		fmt.Printf("Rom Info:              ")
@@ -81,33 +91,33 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 		}
 		fmt.Println(strings.Join(romInfoStrs, "\n                       "))
 	}
-	
+
 	// Display GUID/MAC information based on format
 	if info.UseDualFormat {
 		// Dual format for encrypted firmware (GUID1/GUID2, MAC1/MAC2)
 		fmt.Printf("Description:           UID                GuidsNumber  Step\n")
-		
+
 		// GUID1
 		if info.BaseGUID != 0 {
 			fmt.Printf("Base GUID1:            %016x        %d       %d\n", info.BaseGUID, info.BaseGUIDNum, info.GUIDStep)
 		} else {
 			fmt.Printf("Base GUID1:            N/A                    N/A       N/A\n")
 		}
-		
+
 		// GUID2
 		if info.BaseGUID2 != 0 {
 			fmt.Printf("Base GUID2:            %016x        %d       %d\n", info.BaseGUID2, info.BaseGUID2Num, info.GUIDStep)
 		} else {
 			fmt.Printf("Base GUID2:            N/A                    N/A       N/A\n")
 		}
-		
+
 		// MAC1
 		if info.BaseMAC != 0 {
 			fmt.Printf("Base MAC1:             %012x            %d       %d\n", info.BaseMAC, info.BaseMACNum, info.MACStep)
 		} else {
 			fmt.Printf("Base MAC1:             N/A                    N/A       N/A\n")
 		}
-		
+
 		// MAC2
 		if info.BaseMAC2 != 0 {
 			fmt.Printf("Base MAC2:             %012x            %d       %d\n", info.BaseMAC2, info.BaseMAC2Num, info.MACStep)
@@ -128,10 +138,10 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 			fmt.Printf("Base MAC:              N/A                     %d\n", info.BaseMACNum)
 		}
 	}
-	fmt.Printf("Image VSD:             %s\n", FormatNA(info.ImageVSD))
-	fmt.Printf("Device VSD:            %s\n", FormatNA(info.DeviceVSD))
+	fmt.Printf("Image VSD:             %s\n", cliutil.FormatNA(info.ImageVSD))
+	fmt.Printf("Device VSD:            %s\n", cliutil.FormatNA(info.DeviceVSD))
 	fmt.Printf("PSID:                  %s\n", info.PSID)
-	
+
 	// Show Orig PSID if it exists or if using dual format (encrypted firmware)
 	if info.OrigPSID != "" && info.OrigPSID != info.PSID {
 		fmt.Printf("Orig PSID:             %s\n", info.OrigPSID)
@@ -139,12 +149,16 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 		// For encrypted firmware, always show Orig PSID even if N/A
 		fmt.Printf("Orig PSID:             N/A\n")
 	}
-	
-	fmt.Printf("Security Attributes:   %s\n", FormatNA(info.SecurityAttrs))
+
+	fmt.Printf("Security Attributes:   %s\n", cliutil.FormatNA(info.SecurityAttrs))
 	fmt.Printf("Security Ver:          %d\n", info.SecurityVer)
-	
+
 	fmt.Printf("Default Update Method: fw_ctrl\n")
+
+	// Optional device-mode extras (if present)
+	if info.ActivationMethod != "" {
+		fmt.Printf("Activation Method:     %s\n", info.ActivationMethod)
+	}
 
 	return nil
 }
-

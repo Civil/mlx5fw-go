@@ -10,8 +10,8 @@ import (
 // BaseCRCHandler provides common CRC handling functionality
 // that can be embedded in specific CRC handlers
 type BaseCRCHandler struct {
-	calculator    interfaces.CRCCalculator
-	crcOffset     int
+	calculator     interfaces.CRCCalculator
+	crcOffset      int
 	hasEmbeddedCRC bool
 }
 
@@ -30,11 +30,11 @@ func (h *BaseCRCHandler) VerifyCRC(data []byte, expectedCRC uint32, crcType type
 	if err != nil {
 		return err
 	}
-	
+
 	if calculated != expectedCRC {
 		return errors.CRCMismatchError(expectedCRC, calculated, "section")
 	}
-	
+
 	return nil
 }
 
@@ -60,15 +60,15 @@ func (h *BaseCRCHandler) VerifyCRC16(data []byte, expectedCRC uint32, crcType ty
 	if err != nil {
 		return err
 	}
-	
+
 	// For CRC16, only the lower 16 bits are significant
 	expectedCRC16 := expectedCRC & 0xFFFF
 	calculated16 := calculated & 0xFFFF
-	
+
 	if calculated16 != expectedCRC16 {
 		return errors.CRCMismatchError(expectedCRC16, calculated16, "section")
 	}
-	
+
 	return nil
 }
 

@@ -9,32 +9,41 @@ import (
 var (
 	// ErrInvalidData indicates invalid or corrupted data
 	ErrInvalidData = merry.New("invalid data")
-	
+
 	// ErrDataTooShort indicates data is shorter than expected
 	ErrDataTooShort = merry.New("data too short")
-	
+
 	// ErrCRCMismatch indicates CRC validation failed
 	ErrCRCMismatch = merry.New("CRC mismatch")
-	
+
 	// ErrNotSupported indicates an unsupported operation or format
 	ErrNotSupported = merry.New("not supported")
-	
+
 	// ErrSectionNotFound indicates a required section was not found
 	ErrSectionNotFound = merry.New("section not found")
-	
+
 	// ErrInvalidMagic indicates invalid magic pattern
 	ErrInvalidMagic = merry.New("invalid magic pattern")
-	
+
+	// ErrInvalidOffset indicates an invalid file or buffer offset
+	ErrInvalidOffset = merry.New("invalid offset")
+
+	// ErrInvalidSize indicates an invalid region or section size
+	ErrInvalidSize = merry.New("invalid size")
+
+	// ErrInvalidDataSize indicates a data buffer size is not as expected
+	ErrInvalidDataSize = merry.New("invalid data size")
+
 	// ErrFileTooLarge indicates file exceeds size limits
 	ErrFileTooLarge = merry.New("file too large")
-	
+
 	// ErrInvalidParameter indicates invalid function parameter
 	ErrInvalidParameter = merry.New("invalid parameter")
 )
 
 // DataTooShortError creates an error for insufficient data with detailed context
 func DataTooShortError(expected, actual int, context string) error {
-	return merry.Wrap(ErrDataTooShort, 
+	return merry.Wrap(ErrDataTooShort,
 		merry.WithMessagef("%s: expected at least %d bytes, got %d", context, expected, actual))
 }
 

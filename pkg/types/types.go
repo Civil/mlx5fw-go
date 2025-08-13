@@ -14,7 +14,7 @@ const (
 	FormatUnknown FirmwareFormat = iota
 	// FormatFS4 indicates FS4 firmware format
 	FormatFS4
-	// FormatFS5 indicates FS5 firmware format  
+	// FormatFS5 indicates FS5 firmware format
 	FormatFS5
 )
 
@@ -41,7 +41,7 @@ func (f *FirmwareFormat) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	
+
 	switch s {
 	case "FS4":
 		*f = FormatFS4
@@ -52,7 +52,7 @@ func (f *FirmwareFormat) UnmarshalJSON(data []byte) error {
 	default:
 		return fmt.Errorf("unknown firmware format: %s", s)
 	}
-	
+
 	return nil
 }
 
@@ -93,7 +93,7 @@ func (c *CRCType) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	
+
 	switch s {
 	case "IN_ITOC_ENTRY":
 		*c = CRCInITOCEntry
@@ -107,7 +107,7 @@ func (c *CRCType) UnmarshalJSON(data []byte) error {
 	default:
 		return fmt.Errorf("unknown CRC type: %s", s)
 	}
-	
+
 	return nil
 }
 
@@ -140,28 +140,28 @@ func (s *SectionType) UnmarshalJSON(data []byte) error {
 			return nil
 		}
 	}
-	
+
 	// Try to unmarshal as a number (backward compatibility)
 	var val uint16
 	if err := json.Unmarshal(data, &val); err == nil {
 		*s = SectionType(val)
 		return nil
 	}
-	
+
 	return fmt.Errorf("cannot unmarshal section type from %s", string(data))
 }
 
 // FirmwareMetadata contains parsed firmware metadata
 type FirmwareMetadata struct {
-	Format         FirmwareFormat
-	ImageStart     uint32
-	ImageSize      uint64
-	ChunkSize      uint64
-	IsEncrypted    bool
-	HWPointers     interface{} // Either *FS4HWPointers or *FS5HWPointers
-	ITOCHeader     *ITOCHeader
-	DTOCHeader     *ITOCHeader // DTOC uses same header structure as ITOC
-	ImageInfo      *ImageInfo
-	DeviceInfo     *DeviceInfo
-	MFGInfo        *MFGInfo
+	Format      FirmwareFormat
+	ImageStart  uint32
+	ImageSize   uint64
+	ChunkSize   uint64
+	IsEncrypted bool
+	HWPointers  interface{} // Either *FS4HWPointers or *FS5HWPointers
+	ITOCHeader  *ITOCHeader
+	DTOCHeader  *ITOCHeader // DTOC uses same header structure as ITOC
+	ImageInfo   *ImageInfo
+	DeviceInfo  *DevInfo
+	MFGInfo     *MfgInfo
 }

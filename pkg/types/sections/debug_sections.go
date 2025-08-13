@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	
+
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
@@ -29,18 +29,18 @@ func NewDBGFwIniSection(base *interfaces.BaseSection) *DBGFwIniSection {
 // Parse parses the DBG_FW_INI section data
 func (s *DBGFwIniSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	// According to mstflint source code analysis:
 	// DBG_FW_INI section is always compressed with zlib in practice,
 	// but this is NOT indicated in the ITOC entry flags.
 	// mstflint just attempts to decompress unconditionally.
-	
+
 	// Try to decompress the entire data (no header)
 	decompressed, err := s.decompressZlib(data)
 	if err == nil {
 		// Successfully decompressed - this is the INI data
 		s.IniData = decompressed
-		
+
 		// Create a synthetic header for consistency
 		s.Header = &types.DBGFwIni{
 			CompressionMethod: 1, // Zlib
@@ -48,7 +48,7 @@ func (s *DBGFwIniSection) Parse(data []byte) error {
 			CompressedSize:    uint32(len(data)),
 			Reserved:          0,
 		}
-		
+
 	} else {
 		// Decompression failed, keep the raw data but don't try to parse as header
 		// The data is likely compressed but we couldn't decompress it
@@ -56,7 +56,7 @@ func (s *DBGFwIniSection) Parse(data []byte) error {
 		// Don't set a header to avoid garbage values in JSON
 		s.Header = nil
 	}
-	
+
 	return nil
 }
 
@@ -68,17 +68,17 @@ func (s *DBGFwIniSection) MarshalJSON() ([]byte, error) {
 		"offset":    s.Offset(),
 		"size":      s.Size(),
 	}
-	
+
 	// Always need raw data for bit-perfect reconstruction
 	// (zlib compression is not deterministic)
 	result["has_raw_data"] = true
-	
+
 	// Also mark if we have extracted data for convenience
 	if s.IniData != nil && len(s.IniData) > 0 {
 		result["has_extracted_data"] = true
 		result["extracted_data_type"] = "ini"
 	}
-	
+
 	if s.Header != nil {
 		compressionMethod := "Unknown"
 		switch s.Header.CompressionMethod {
@@ -89,7 +89,7 @@ func (s *DBGFwIniSection) MarshalJSON() ([]byte, error) {
 		case 2:
 			compressionMethod = "LZMA"
 		}
-		
+
 		result["dbg_fw_ini"] = map[string]interface{}{
 			"compression_method": compressionMethod,
 			"uncompressed_size":  s.Header.UncompressedSize,
@@ -102,7 +102,7 @@ func (s *DBGFwIniSection) MarshalJSON() ([]byte, error) {
 			"note": "Compressed data without header, decompression failed",
 		}
 	}
-	
+
 	return json.Marshal(result)
 }
 
@@ -118,7 +118,7 @@ func (s *DBGFwIniSection) Marshal() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to compress INI data: %w", err)
 	}
-	
+
 	// Based on how mstflint works, just return the compressed data without header
 	return compressedData, nil
 }
@@ -130,13 +130,13 @@ func (s *DBGFwIniSection) decompressZlib(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create zlib reader: %w", err)
 	}
 	defer reader.Close()
-	
+
 	// Read all data
 	decompressed, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress: %w", err)
 	}
-	
+
 	return decompressed, nil
 }
 
@@ -175,7 +175,7 @@ func NewDBGFwParamsSection(base *interfaces.BaseSection) *DBGFwParamsSection {
 // Parse parses the DBG_FW_PARAMS section data
 func (s *DBGFwParamsSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	// Based on mstflint analysis, DBG_FW_PARAMS can be very small (8 bytes)
 	// and may contain compressed data without a header structure
 	if len(data) < 16 {
@@ -192,30 +192,30 @@ func (s *DBGFwParamsSection) Parse(data []byte) error {
 		}
 		return nil
 	}
-	
+
 	// Normal case: has header
 	s.Header = &types.DBGFwParams{}
 	if err := s.Header.Unmarshal(data[:16]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 16 {
 		s.Data = data[16:]
 	}
-	
+
 	return nil
 }
 
 // MarshalJSON returns JSON representation of the DBG_FW_PARAMS section
 func (s *DBGFwParamsSection) MarshalJSON() ([]byte, error) {
 	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
+		"type":         s.Type(),
+		"type_name":    s.TypeName(),
+		"offset":       s.Offset(),
+		"size":         s.Size(),
 		"has_raw_data": true, // DBG_FW_PARAMS needs binary data
 	}
-	
+
 	if s.Header != nil {
 		compressionMethod := "Unknown"
 		switch s.Header.CompressionMethod {
@@ -226,7 +226,7 @@ func (s *DBGFwParamsSection) MarshalJSON() ([]byte, error) {
 		case 2:
 			compressionMethod = "LZMA"
 		}
-		
+
 		result["dbg_fw_params"] = map[string]interface{}{
 			"compression_method": compressionMethod,
 			"uncompressed_size":  s.Header.UncompressedSize,
@@ -236,16 +236,16 @@ func (s *DBGFwParamsSection) MarshalJSON() ([]byte, error) {
 	} else if s.Data != nil && len(s.Data) > 0 {
 		// No header, just raw data
 		result["dbg_fw_params"] = map[string]interface{}{
-			"note": "Small section with raw data (no header)",
+			"note":      "Small section with raw data (no header)",
 			"data_size": len(s.Data),
 		}
-		
+
 		// Check if it looks like compressed data
 		if len(s.Data) >= 2 && s.Data[0] == 0x78 {
 			result["dbg_fw_params"].(map[string]interface{})["possible_compression"] = "zlib"
 		}
 	}
-	
+
 	return json.Marshal(result)
 }
 
@@ -266,33 +266,33 @@ func NewFWAdbSection(base *interfaces.BaseSection) *FWAdbSection {
 // Parse parses the FW_ADB section data
 func (s *FWAdbSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 16 {
 		return merry.New("FW_ADB section too small")
 	}
-	
+
 	s.Header = &types.FWAdb{}
 	if err := s.Header.Unmarshal(data[:16]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 16 {
 		s.Data = data[16:]
 	}
-	
+
 	return nil
 }
 
 // MarshalJSON returns JSON representation of the FW_ADB section
 func (s *FWAdbSection) MarshalJSON() ([]byte, error) {
 	result := map[string]interface{}{
-		"type":      s.Type(),
-		"type_name": s.TypeName(),
-		"offset":    s.Offset(),
-		"size":      s.Size(),
+		"type":         s.Type(),
+		"type_name":    s.TypeName(),
+		"offset":       s.Offset(),
+		"size":         s.Size(),
 		"has_raw_data": true, // FW_ADB needs binary data
 	}
-	
+
 	if s.Header != nil {
 		result["fw_adb"] = map[string]interface{}{
 			"version":   s.Header.Version,
@@ -300,6 +300,6 @@ func (s *FWAdbSection) MarshalJSON() ([]byte, error) {
 			"data_size": len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(result)
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/parser/fs4"
 	"github.com/Civil/mlx5fw-go/pkg/types"
@@ -17,21 +18,21 @@ import (
 
 // SectionDisplay represents a section for display
 type SectionDisplay struct {
-	StartAddr    uint64
-	EndAddr      uint64
-	Size         uint32
-	Name         string
-	Status       string
-	Section      interfaces.SectionReader
-	IsHWPointer  bool
-	IsHeader     bool
+	StartAddr   uint64
+	EndAddr     uint64
+	Size        uint32
+	Name        string
+	Status      string
+	Section     interfaces.SectionReader
+	IsHWPointer bool
+	IsHeader    bool
 }
 
 func runSectionsCommand(cmd *cobra.Command, args []string, showContent bool, outputFormat string) error {
-	logger.Info("Starting sections command")
+	logger.Debug("Starting sections command")
 
 	// Initialize firmware parser
-	ctx, err := InitializeFirmwareParser(firmwarePath, logger)
+	ctx, err := cliutil.InitializeFirmwareParser(firmwarePath, logger)
 	if err != nil {
 		return err
 	}
@@ -42,7 +43,7 @@ func runSectionsCommand(cmd *cobra.Command, args []string, showContent bool, out
 	// Get sections
 	sections := fs4Parser.GetSections()
 	format := fs4Parser.GetFormat()
-	
+
 	// Display sections
 	return displaySections(firmwarePath, format, sections, fs4Parser, showContent, outputFormat)
 }
@@ -62,10 +63,10 @@ type JSONSection struct {
 
 // JSONOutput represents the complete JSON output structure
 type JSONOutput struct {
-	FirmwareFormat     string        `json:"FirmwareFormat"`
-	OverallStatus      string        `json:"OverallStatus"`
-	IsBootable         bool          `json:"IsBootable"`
-	Sections           []JSONSection `json:"Sections"`
+	FirmwareFormat string        `json:"FirmwareFormat"`
+	OverallStatus  string        `json:"OverallStatus"`
+	IsBootable     bool          `json:"IsBootable"`
+	Sections       []JSONSection `json:"Sections"`
 }
 
 func displaySections(filePath string, format types.FirmwareFormat, sections map[uint16][]interfaces.CompleteSectionInterface, parser *fs4.Parser, showContent bool, outputFormat string) error {
@@ -74,12 +75,12 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 		// Collect all sections and convert to JSON format
 		var jsonSections []JSONSection
 		overallBootable := true
-		
+
 		for _, sectionList := range sections {
 			for _, section := range sectionList {
 				// Get section type name
 				typeName := section.TypeName()
-				
+
 				// Convert CRC type to string
 				var crcTypeName string
 				switch section.CRCType() {
@@ -92,7 +93,7 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 				default:
 					crcTypeName = fmt.Sprintf("UNKNOWN_%d", section.CRCType())
 				}
-				
+
 				// Verify section and get status
 				status, err := parser.VerifySectionNew(section)
 				if err != nil {
@@ -100,14 +101,14 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 					status = "ERROR"
 					overallBootable = false
 				}
-				
+
 				// Check if verification passed
 				// SIZE NOT ALIGNED is still considered OK for bootability
-				if status != "OK" && status != "CRC IGNORED" && status != "NO ENTRY" && 
-				   status != "NOT FOUND" && status != "SIZE NOT ALIGNED" {
+				if status != "OK" && status != "CRC IGNORED" && status != "NO ENTRY" &&
+					status != "NOT FOUND" && status != "SIZE NOT ALIGNED" {
 					overallBootable = false
 				}
-				
+
 				jsonSection := JSONSection{
 					Type:               typeName,
 					StartAddress:       section.Offset(),
@@ -119,41 +120,41 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 					IsDeviceData:       section.IsDeviceData(),
 					VerificationStatus: status,
 				}
-				
+
 				jsonSections = append(jsonSections, jsonSection)
 			}
 		}
-		
+
 		// Sort by start address for consistent output
 		sort.Slice(jsonSections, func(i, j int) bool {
 			return jsonSections[i].StartAddress < jsonSections[j].StartAddress
 		})
-		
+
 		// Create overall output structure
 		overallStatus := "FW image verification succeeded"
 		if !overallBootable {
 			overallStatus = "FW image verification failed"
 		}
-		
+
 		output := JSONOutput{
 			FirmwareFormat: format.String(),
 			OverallStatus:  overallStatus,
 			IsBootable:     overallBootable,
 			Sections:       jsonSections,
 		}
-		
+
 		// Output as JSON
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(output)
 	}
-	
+
 	// Regular text output
 	fmt.Printf("%s failsafe image\n\n", format.String())
-	
+
 	// Prepare sections for display
 	var displaySections []SectionDisplay
-	
+
 	// Add HW pointers (always at beginning)
 	for i := 0; i < 16; i++ {
 		offset := uint64(0x18 + i*8)
@@ -166,10 +167,10 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 			IsHWPointer: true,
 		})
 	}
-	
+
 	// BOOT2 section is discovered dynamically from HW pointers in parser.go
 	// It will be added from the parsed sections map below
-	
+
 	// Add ITOC header
 	itocAddr := uint64(parser.GetITOCAddress())
 	itocStatus := "OK"
@@ -189,7 +190,7 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 		Status:    itocStatus,
 		IsHeader:  true,
 	})
-	
+
 	// Add DTOC header
 	dtocAddr := uint64(parser.GetDTOCAddress())
 	dtocStatus := "OK"
@@ -209,7 +210,7 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 		Status:    dtocStatus,
 		IsHeader:  true,
 	})
-	
+
 	// Add parsed sections
 	for sectionType, sectionList := range sections {
 		for _, section := range sectionList {
@@ -224,20 +225,20 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 					zap.String("crc_type", section.CRCType().String()),
 					zap.Bool("from_hw_pointer", section.IsFromHWPointer()))
 			}
-			
+
 			// Verify section
 			status, err := parser.VerifySectionNew(section)
 			if err != nil {
 				logger.Warn("Failed to verify section", zap.Error(err))
 				status = "ERROR"
 			}
-			
+
 			name := section.TypeName()
-			
+
 			// Calculate display addresses
 			endAddr := section.Offset() + uint64(section.Size()) - 1
 			displaySize := section.Size()
-			
+
 			displaySections = append(displaySections, SectionDisplay{
 				StartAddr: section.Offset(),
 				EndAddr:   endAddr,
@@ -248,32 +249,32 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 			})
 		}
 	}
-	
+
 	// Sort by start address
 	sort.Slice(displaySections, func(i, j int) bool {
 		return displaySections[i].StartAddr < displaySections[j].StartAddr
 	})
-	
+
 	// Display sections and track if any failed
 	hasFailures := false
 	for _, ds := range displaySections {
 		fmt.Printf("     /0x%08x-0x%08x (0x%06x)/ (%s) - %s\n",
 			ds.StartAddr, ds.EndAddr, ds.Size, ds.Name, ds.Status)
-		
+
 		// Check if this section failed verification
 		// Don't count ENCRYPTED status as a failure (matches mstflint behavior)
 		if strings.Contains(ds.Status, "FAIL") || ds.Status == "ERROR" {
 			hasFailures = true
 		}
-		
+
 		if showContent && ds.Section != nil {
 			// Show section content
 			// Show basic section content - in real implementation would format
-			content := fmt.Sprintf("      Section data: %d bytes", ds.Section.Size)
+			content := fmt.Sprintf("      Section data: %d bytes", ds.Section.Size())
 			fmt.Println(content)
 		}
 	}
-	
+
 	// Only report success if no failures were found
 	if hasFailures {
 		fmt.Println("\n-E- FW image verification failed. CRC errors detected.")
@@ -281,7 +282,6 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 	} else {
 		fmt.Println("\n-I- FW image verification succeeded. Image is bootable.")
 	}
-	
+
 	return nil
 }
-

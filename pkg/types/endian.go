@@ -7,8 +7,8 @@ import (
 
 // Reader provides endian-aware reading capabilities
 type Reader struct {
-	r        io.ReaderAt
-	order    binary.ByteOrder
+	r     io.ReaderAt
+	order binary.ByteOrder
 }
 
 // NewBigEndianReader creates a new big-endian reader

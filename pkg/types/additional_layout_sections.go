@@ -42,11 +42,11 @@ func (h *FS4HtocEntry) Marshal() ([]byte, error) {
 
 // FS4HtocHeader represents the HTOC header for FS4 with annotations
 type FS4HtocHeader struct {
-	Version       uint32   `offset:"0x0,endian:be"`  // offset 0x0
-	NumOfEntries  uint8    `offset:"0x4,endian:be"`  // offset 0x4, bits 0-7
-	HashType      uint8    `offset:"0x5,endian:be"`  // offset 0x4, bits 8-15
-	HashSize      uint16   `offset:"0x6,endian:be"`  // offset 0x4, bits 16-31
-	Reserved      [8]uint8 `offset:"0x8"`            // padding to 16 bytes
+	Version      uint32   `offset:"0x0,endian:be"` // offset 0x0
+	NumOfEntries uint8    `offset:"0x4,endian:be"` // offset 0x4, bits 0-7
+	HashType     uint8    `offset:"0x5,endian:be"` // offset 0x4, bits 8-15
+	HashSize     uint16   `offset:"0x6,endian:be"` // offset 0x4, bits 16-31
+	Reserved     [8]uint8 `offset:"0x8"`           // padding to 16 bytes
 }
 
 // Unmarshal unmarshals binary data
@@ -92,9 +92,9 @@ func (h *FS4Htoc) Marshal() ([]byte, error) {
 
 // FS4HashesTable represents the complete hashes table structure for FS4 with annotations
 type FS4HashesTable struct {
-	Header FS4HashesTableHeader `offset:"0x0"`   // offset 0x0-0xb (12 bytes)
-	Htoc   FS4Htoc              `offset:"0xc"`   // offset 0xc-0xfb (240 bytes)
-	Hash   [28]FS4HtocHash      `offset:"0xfc"`  // offset 0xfc-0x7fb (28 * 64 = 1792 bytes)
+	Header FS4HashesTableHeader `offset:"0x0"`             // offset 0x0-0xb (12 bytes)
+	Htoc   FS4Htoc              `offset:"0xc"`             // offset 0xc-0xfb (240 bytes)
+	Hash   [28]FS4HtocHash      `offset:"0xfc"`            // offset 0xfc-0x7fb (28 * 64 = 1792 bytes)
 	CRC    uint32               `offset:"0x7fc,endian:be"` // offset 0x7fc: CRC at end
 }
 
@@ -127,20 +127,20 @@ func (h *FS4HwPointerEntry) Marshal() ([]byte, error) {
 
 // FS4HwPointersCarmel represents the HW pointers for Carmel architecture (FS4) with annotations
 type FS4HwPointersCarmel struct {
-	BootRecordPtr               FS4HwPointerEntry `offset:"0x0"`  // offset 0x0
-	Boot2Ptr                    FS4HwPointerEntry `offset:"0x8"`  // offset 0x8
-	TocPtr                      FS4HwPointerEntry `offset:"0x10"` // offset 0x10
-	ToolsPtr                    FS4HwPointerEntry `offset:"0x18"` // offset 0x18
-	AuthenticationStartPointer  FS4HwPointerEntry `offset:"0x20"` // offset 0x20
-	AuthenticationEndPointer    FS4HwPointerEntry `offset:"0x28"` // offset 0x28
-	DigestPointer               FS4HwPointerEntry `offset:"0x30"` // offset 0x30
-	DigestRecoveryKeyPointer    FS4HwPointerEntry `offset:"0x38"` // offset 0x38
-	FwWindowStartPointer        FS4HwPointerEntry `offset:"0x40"` // offset 0x40
-	FwWindowEndPointer          FS4HwPointerEntry `offset:"0x48"` // offset 0x48
-	ImageInfoSectionPointer     FS4HwPointerEntry `offset:"0x50"` // offset 0x50
-	ImageSignaturePointer       FS4HwPointerEntry `offset:"0x58"` // offset 0x58
-	PublicKeyPointer            FS4HwPointerEntry `offset:"0x60"` // offset 0x60
-	FwSecurityVersionPointer    FS4HwPointerEntry `offset:"0x68"` // offset 0x68
+	BootRecordPtr              FS4HwPointerEntry `offset:"0x0"`  // offset 0x0
+	Boot2Ptr                   FS4HwPointerEntry `offset:"0x8"`  // offset 0x8
+	TocPtr                     FS4HwPointerEntry `offset:"0x10"` // offset 0x10
+	ToolsPtr                   FS4HwPointerEntry `offset:"0x18"` // offset 0x18
+	AuthenticationStartPointer FS4HwPointerEntry `offset:"0x20"` // offset 0x20
+	AuthenticationEndPointer   FS4HwPointerEntry `offset:"0x28"` // offset 0x28
+	DigestPointer              FS4HwPointerEntry `offset:"0x30"` // offset 0x30
+	DigestRecoveryKeyPointer   FS4HwPointerEntry `offset:"0x38"` // offset 0x38
+	FwWindowStartPointer       FS4HwPointerEntry `offset:"0x40"` // offset 0x40
+	FwWindowEndPointer         FS4HwPointerEntry `offset:"0x48"` // offset 0x48
+	ImageInfoSectionPointer    FS4HwPointerEntry `offset:"0x50"` // offset 0x50
+	ImageSignaturePointer      FS4HwPointerEntry `offset:"0x58"` // offset 0x58
+	PublicKeyPointer           FS4HwPointerEntry `offset:"0x60"` // offset 0x60
+	FwSecurityVersionPointer   FS4HwPointerEntry `offset:"0x68"` // offset 0x68
 	GcmIvDeltaPointer          FS4HwPointerEntry `offset:"0x70"` // offset 0x70
 	HashesTablePointer         FS4HwPointerEntry `offset:"0x78"` // offset 0x78
 }
@@ -174,22 +174,22 @@ func (h *FS5HwPointerEntry) Marshal() ([]byte, error) {
 
 // FS5HwPointersGilboa represents the HW pointers for Gilboa architecture (FS5) with annotations
 type FS5HwPointersGilboa struct {
-	PSCBCTPointer              FS5HwPointerEntry `offset:"0x0"`  // offset 0x0
-	Boot2Ptr                   FS5HwPointerEntry `offset:"0x8"`  // offset 0x8
-	TOCPtr                     FS5HwPointerEntry `offset:"0x10"` // offset 0x10
-	ToolsPtr                   FS5HwPointerEntry `offset:"0x18"` // offset 0x18
-	PSCBL1BCHPointer          FS5HwPointerEntry `offset:"0x20"` // offset 0x20
-	PSCBL1Pointer             FS5HwPointerEntry `offset:"0x28"` // offset 0x28
-	NCoreBCHPointer           FS5HwPointerEntry `offset:"0x30"` // offset 0x30
-	Reserved                  FS5HwPointerEntry `offset:"0x38"` // offset 0x38
-	PSCFWBCHPointer           FS5HwPointerEntry `offset:"0x40"` // offset 0x40
-	PSCFWPointer              FS5HwPointerEntry `offset:"0x48"` // offset 0x48
-	ImageInfoSectionPointer   FS5HwPointerEntry `offset:"0x50"` // offset 0x50
-	ImageSignaturePointer     FS5HwPointerEntry `offset:"0x58"` // offset 0x58
-	PublicKeyPointer          FS5HwPointerEntry `offset:"0x60"` // offset 0x60
-	ForbiddenVersionsPointer  FS5HwPointerEntry `offset:"0x68"` // offset 0x68
-	PSCHashesTablePointer     FS5HwPointerEntry `offset:"0x70"` // offset 0x70
-	NCoreHashesPointer        FS5HwPointerEntry `offset:"0x78"` // offset 0x78
+	PSCBCTPointer            FS5HwPointerEntry `offset:"0x0"`  // offset 0x0
+	Boot2Ptr                 FS5HwPointerEntry `offset:"0x8"`  // offset 0x8
+	TOCPtr                   FS5HwPointerEntry `offset:"0x10"` // offset 0x10
+	ToolsPtr                 FS5HwPointerEntry `offset:"0x18"` // offset 0x18
+	PSCBL1BCHPointer         FS5HwPointerEntry `offset:"0x20"` // offset 0x20
+	PSCBL1Pointer            FS5HwPointerEntry `offset:"0x28"` // offset 0x28
+	NCoreBCHPointer          FS5HwPointerEntry `offset:"0x30"` // offset 0x30
+	Reserved                 FS5HwPointerEntry `offset:"0x38"` // offset 0x38
+	PSCFWBCHPointer          FS5HwPointerEntry `offset:"0x40"` // offset 0x40
+	PSCFWPointer             FS5HwPointerEntry `offset:"0x48"` // offset 0x48
+	ImageInfoSectionPointer  FS5HwPointerEntry `offset:"0x50"` // offset 0x50
+	ImageSignaturePointer    FS5HwPointerEntry `offset:"0x58"` // offset 0x58
+	PublicKeyPointer         FS5HwPointerEntry `offset:"0x60"` // offset 0x60
+	ForbiddenVersionsPointer FS5HwPointerEntry `offset:"0x68"` // offset 0x68
+	PSCHashesTablePointer    FS5HwPointerEntry `offset:"0x70"` // offset 0x70
+	NCoreHashesPointer       FS5HwPointerEntry `offset:"0x78"` // offset 0x78
 }
 
 // Unmarshal unmarshals binary data
@@ -204,15 +204,15 @@ func (h *FS5HwPointersGilboa) Marshal() ([]byte, error) {
 
 // FS4ComponentAuthenticationConfiguration represents authentication configuration for FS4 with annotations
 type FS4ComponentAuthenticationConfiguration struct {
-	AuthType        uint8  `offset:"bit:0,len:8,endian:be"`   // bits 0-7: 0-FW_BURN_NONE, 1-SHA256, 2-SHA512, 3-RSA2048, 4-RSA4096
-	Reserved1       uint32 `offset:"bit:8,len:17,endian:be"`  // bits 8-24: reserved
-	CRTokenEn       uint8  `offset:"bit:25,len:1,endian:be"`  // bit 25: challenge-response token enable
-	BTCTokenEn      uint8  `offset:"bit:26,len:1,endian:be"`  // bit 26: back to commissioning token enable
-	FRCEn           uint8  `offset:"bit:27,len:1,endian:be"`  // bit 27: factory re-configuration enable
-	MLNXNVConfigEn  uint8  `offset:"bit:28,len:1,endian:be"`  // bit 28: MLNX nvconfig enable
-	VendorNVConfigEn uint8 `offset:"bit:29,len:1,endian:be"`  // bit 29: vendor nvconfig enable
-	CSTokenEn       uint8  `offset:"bit:30,len:1,endian:be"`  // bit 30: CS token enable
-	FWEn            uint8  `offset:"bit:31,len:1,endian:be"`  // bit 31: firmware enable
+	AuthType         uint8  `offset:"bit:0,len:8,endian:be"`  // bits 0-7: 0-FW_BURN_NONE, 1-SHA256, 2-SHA512, 3-RSA2048, 4-RSA4096
+	Reserved1        uint32 `offset:"bit:8,len:17,endian:be"` // bits 8-24: reserved
+	CRTokenEn        uint8  `offset:"bit:25,len:1,endian:be"` // bit 25: challenge-response token enable
+	BTCTokenEn       uint8  `offset:"bit:26,len:1,endian:be"` // bit 26: back to commissioning token enable
+	FRCEn            uint8  `offset:"bit:27,len:1,endian:be"` // bit 27: factory re-configuration enable
+	MLNXNVConfigEn   uint8  `offset:"bit:28,len:1,endian:be"` // bit 28: MLNX nvconfig enable
+	VendorNVConfigEn uint8  `offset:"bit:29,len:1,endian:be"` // bit 29: vendor nvconfig enable
+	CSTokenEn        uint8  `offset:"bit:30,len:1,endian:be"` // bit 30: CS token enable
+	FWEn             uint8  `offset:"bit:31,len:1,endian:be"` // bit 31: firmware enable
 }
 
 // Unmarshal unmarshals binary data
@@ -227,8 +227,8 @@ func (c *FS4ComponentAuthenticationConfiguration) Marshal() ([]byte, error) {
 
 // FS4FilePublicKeys represents the file public keys structure (2048-bit RSA) for FS4 with annotations
 type FS4FilePublicKeys struct {
-	ComponentAuthConfig FS4ComponentAuthenticationConfiguration `offset:"0x0"`  // offset 0x0
-	Reserved1           [8]uint8                                `offset:"0x4"`  // padding
+	ComponentAuthConfig FS4ComponentAuthenticationConfiguration `offset:"0x0"`            // offset 0x0
+	Reserved1           [8]uint8                                `offset:"0x4"`            // padding
 	KeypairExp          uint32                                  `offset:"0xc,endian:be"`  // offset 0xc: usually 65537
 	KeypairUUID         [4]uint32                               `offset:"0x10,endian:be"` // offset 0x10-0x1c: UUID
 	Key                 [64]uint32                              `offset:"0x20,endian:be"` // offset 0x20-0x11c: 2048-bit key
@@ -246,8 +246,8 @@ func (f *FS4FilePublicKeys) Marshal() ([]byte, error) {
 
 // FS4FilePublicKeys2 represents the file public keys structure (4096-bit RSA) for FS4 with annotations
 type FS4FilePublicKeys2 struct {
-	ComponentAuthConfig FS4ComponentAuthenticationConfiguration `offset:"0x0"`  // offset 0x0
-	Reserved1           [8]uint8                                `offset:"0x4"`  // padding
+	ComponentAuthConfig FS4ComponentAuthenticationConfiguration `offset:"0x0"`            // offset 0x0
+	Reserved1           [8]uint8                                `offset:"0x4"`            // padding
 	KeypairExp          uint32                                  `offset:"0xc,endian:be"`  // offset 0xc: usually 65537
 	KeypairUUID         [4]uint32                               `offset:"0x10,endian:be"` // offset 0x10-0x1c: UUID
 	Key                 [128]uint32                             `offset:"0x20,endian:be"` // offset 0x20-0x21c: 4096-bit key
@@ -380,10 +380,10 @@ func (s *FS4SecureBootSignaturesStruct) Marshal() ([]byte, error) {
 
 // FS4BootVersionStruct represents the boot version structure for FS4 with annotations
 type FS4BootVersionStruct struct {
-	MinorVersion       uint8 `offset:"bit:0,len:8,endian:be"`   // offset 0x0, bits 0-7
-	MajorVersion       uint8 `offset:"bit:8,len:8,endian:be"`   // offset 0x0, bits 8-15
-	Reserved           uint8 `offset:"bit:16,len:8,endian:be"`  // offset 0x0, bits 16-23
-	ImageFormatVersion uint8 `offset:"bit:24,len:8,endian:be"`  // offset 0x0, bits 24-31
+	MinorVersion       uint8 `offset:"bit:0,len:8,endian:be"`  // offset 0x0, bits 0-7
+	MajorVersion       uint8 `offset:"bit:8,len:8,endian:be"`  // offset 0x0, bits 8-15
+	Reserved           uint8 `offset:"bit:16,len:8,endian:be"` // offset 0x0, bits 16-23
+	ImageFormatVersion uint8 `offset:"bit:24,len:8,endian:be"` // offset 0x0, bits 24-31
 }
 
 // Unmarshal unmarshals binary data

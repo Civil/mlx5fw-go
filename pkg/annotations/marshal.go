@@ -17,10 +17,10 @@ func decToHexByte(val uint8) uint8 {
 // decToHexUint16 converts a uint16 from decimal representation to hex
 // e.g., 2024 -> 0x2024
 func decToHexUint16(val uint16) uint16 {
-	return uint16(((val / 1000) % 10) << 12) |
-		uint16(((val / 100) % 10) << 8) |
-		uint16(((val / 10) % 10) << 4) |
-		uint16(val % 10)
+	return uint16(((val/1000)%10)<<12) |
+		uint16(((val/100)%10)<<8) |
+		uint16(((val/10)%10)<<4) |
+		uint16(val%10)
 }
 
 // decToHexUint32 converts a uint32 from decimal representation to hex
@@ -104,7 +104,7 @@ func marshalField(buffer []byte, fieldValue reflect.Value, annotation *FieldAnno
 	if annotation.IsArray {
 		return marshalArray(buffer, fieldValue, annotation)
 	}
-	
+
 	// Handle lists (slices)
 	if fieldValue.Kind() == reflect.Slice {
 		return marshalList(buffer, fieldValue, annotation)
@@ -115,7 +115,7 @@ func marshalField(buffer []byte, fieldValue reflect.Value, annotation *FieldAnno
 
 	// Create a temporary buffer for the field
 	fieldBuffer := &bytes.Buffer{}
-	
+
 	// Write the field value
 	switch fieldValue.Kind() {
 	case reflect.Bool:
@@ -207,69 +207,69 @@ func marshalBitfield(buffer []byte, fieldValue reflect.Value, annotation *FieldA
 		endBit := annotation.BitOffset + annotation.BitLength - 1
 		endByte := endBit / 8
 		numBytes := endByte - startByte + 1
-		
+
 		// Check bounds
 		if endByte >= len(buffer) {
 			return fmt.Errorf("buffer too small for bitfield at offset %d", annotation.BitOffset)
 		}
-		
+
 		// Read existing bytes
 		var existingValue uint64
 		for i := 0; i < numBytes; i++ {
 			existingValue = (existingValue << 8) | uint64(buffer[startByte+i])
 		}
-		
+
 		// Calculate where our field starts within the bytes we read
 		bitOffsetInValue := annotation.BitOffset - (startByte * 8)
-		
+
 		// Calculate unused bits at the end
 		totalBitsInValue := numBytes * 8
 		unusedBitsAtEnd := totalBitsInValue - bitOffsetInValue - annotation.BitLength
-		
+
 		// Create mask to clear the bits we're about to set
 		mask := ((uint64(1) << annotation.BitLength) - 1)
 		if unusedBitsAtEnd > 0 {
 			mask = mask << uint(unusedBitsAtEnd)
 		}
 		existingValue &= ^mask
-		
+
 		// Position the new value
 		if unusedBitsAtEnd > 0 {
 			value = value << uint(unusedBitsAtEnd)
 		}
 		existingValue |= value
-		
+
 		// Write back the bytes
 		for i := numBytes - 1; i >= 0; i-- {
 			buffer[startByte+i] = uint8(existingValue & 0xFF)
 			existingValue >>= 8
 		}
-		
+
 		return nil
 	}
-	
+
 	// Original implementation for little-endian bitfields
 	bytePos := annotation.ByteOffset + annotation.BitOffset/8
 	bitPos := annotation.BitOffset % 8
 	endBit := bitPos + annotation.BitLength
-	
+
 	// Keep the special handling for aligned multi-byte fields if needed
 	if false && annotation.Endianness == BigEndian && getFieldSize(annotation.FieldType) > 1 &&
 		annotation.ByteOffset%4 == 0 && bytePos == annotation.ByteOffset &&
 		endBit <= annotation.ByteOffset*8+32 {
 		// Get the full field size based on the struct field type
 		fieldSize := getFieldSize(annotation.FieldType)
-		
+
 		// Read the existing field value
 		if annotation.ByteOffset+fieldSize > len(buffer) {
 			return fmt.Errorf("buffer too small for field at offset %d (need %d bytes, have %d)", annotation.ByteOffset, annotation.ByteOffset+fieldSize, len(buffer))
 		}
-		
+
 		// Convert the existing field bytes to a big-endian integer
 		var fullValue uint64
 		fieldData := buffer[annotation.ByteOffset : annotation.ByteOffset+fieldSize]
 		reader := bytes.NewReader(fieldData)
-		
+
 		switch fieldSize {
 		case 2:
 			var val uint16
@@ -284,14 +284,14 @@ func marshalBitfield(buffer []byte, fieldValue reflect.Value, annotation *FieldA
 		default:
 			return fmt.Errorf("unsupported field size %d for big-endian bitfield", fieldSize)
 		}
-		
+
 		// Clear the bits we're about to set
-		clearMask := uint64((1 << annotation.BitLength) - 1) << annotation.BitOffset
+		clearMask := uint64((1<<annotation.BitLength)-1) << annotation.BitOffset
 		fullValue &= ^clearMask
-		
+
 		// Set the new bits
 		fullValue |= (value << annotation.BitOffset)
-		
+
 		// Write back the full value
 		switch fieldSize {
 		case 2:
@@ -301,7 +301,7 @@ func marshalBitfield(buffer []byte, fieldValue reflect.Value, annotation *FieldA
 		case 8:
 			binary.BigEndian.PutUint64(buffer[annotation.ByteOffset:], fullValue)
 		}
-		
+
 		return nil
 	}
 
@@ -314,7 +314,7 @@ func marshalBitfield(buffer []byte, fieldValue reflect.Value, annotation *FieldA
 	// Read existing bytes, modify, and write back
 	for i := 0; i < numBytes && bytePos+i < len(buffer); i++ {
 		byteIdx := bytePos + i
-		
+
 		// Calculate bit range for this byte
 		startBit := 0
 		if i == 0 {
@@ -327,7 +327,7 @@ func marshalBitfield(buffer []byte, fieldValue reflect.Value, annotation *FieldA
 		bitsInByte := endBitInByte - startBit
 
 		// Extract bits for this byte
-		shift := i * 8 - bitPos
+		shift := i*8 - bitPos
 		if shift < 0 {
 			shift = 0
 		}
@@ -412,19 +412,19 @@ func marshalList(buffer []byte, fieldValue reflect.Value, annotation *FieldAnnot
 	elemSize := getFieldSize(elemType)
 	byteOrder := getByteOrder(annotation.Endianness)
 	numElements := fieldValue.Len()
-	
+
 	// Marshal each element
 	for i := 0; i < numElements; i++ {
 		elem := fieldValue.Index(i)
 		offset := annotation.ByteOffset + (i * elemSize)
-		
+
 		// Ensure buffer is large enough
 		if offset+elemSize > len(buffer) {
 			// Lists might need to extend the buffer
 			// This should be handled by the caller, for now return error
 			return fmt.Errorf("buffer too small for list element %d at offset %d", i, offset)
 		}
-		
+
 		switch elem.Kind() {
 		case reflect.Uint8:
 			buffer[offset] = uint8(elem.Uint())
@@ -461,7 +461,7 @@ func marshalList(buffer []byte, fieldValue reflect.Value, annotation *FieldAnnot
 			return fmt.Errorf("unsupported list element type: %s", elem.Kind())
 		}
 	}
-	
+
 	// Add terminator if specified
 	if len(annotation.ListTerminator) > 0 {
 		terminatorOffset := annotation.ByteOffset + (numElements * elemSize)
@@ -470,7 +470,7 @@ func marshalList(buffer []byte, fieldValue reflect.Value, annotation *FieldAnnot
 		}
 		copy(buffer[terminatorOffset:], annotation.ListTerminator)
 	}
-	
+
 	return nil
 }
 
@@ -483,12 +483,12 @@ func MarshalStruct(v interface{}) ([]byte, error) {
 	if rv.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("v must be a struct or pointer to struct")
 	}
-	
+
 	annotations, err := ParseStruct(rv.Type())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse struct annotations: %w", err)
 	}
-	
+
 	return Marshal(v, annotations)
 }
 
@@ -501,15 +501,32 @@ func MarshalStructWithSize(v interface{}, outputSize int) ([]byte, error) {
 	if rv.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("v must be a struct or pointer to struct")
 	}
-	
+
 	annotations, err := ParseStruct(rv.Type())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse struct annotations: %w", err)
 	}
-	
+
 	opts := &MarshalOptions{
 		OutputSize: outputSize,
 	}
-	
+
+	return MarshalWithOptions(v, annotations, opts)
+}
+
+// MarshalWithOptionsStruct marshals a struct to bytes by parsing annotations from v automatically,
+// applying the provided options.
+func MarshalWithOptionsStruct(v interface{}, opts *MarshalOptions) ([]byte, error) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("v must be a struct or pointer to struct")
+	}
+	annotations, err := ParseStruct(rv.Type())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse struct annotations: %w", err)
+	}
 	return MarshalWithOptions(v, annotations, opts)
 }

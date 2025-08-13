@@ -10,15 +10,15 @@ import (
 // hexToDecByte converts a byte from hex representation to decimal
 // e.g., 0x27 -> 27
 func hexToDecByte(b uint8) uint8 {
-	return ((b >> 4) & 0xF) * 10 + (b & 0xF)
+	return ((b>>4)&0xF)*10 + (b & 0xF)
 }
 
 // hexToDecUint16 converts a uint16 from hex representation to decimal
 // e.g., 0x2024 -> 2024
 func hexToDecUint16(val uint16) uint16 {
-	return uint16(((val >> 12) & 0xF) * 1000 +
-		((val >> 8) & 0xF) * 100 +
-		((val >> 4) & 0xF) * 10 +
+	return uint16(((val>>12)&0xF)*1000 +
+		((val>>8)&0xF)*100 +
+		((val>>4)&0xF)*10 +
 		(val & 0xF))
 }
 
@@ -89,7 +89,7 @@ func unmarshalField(data []byte, fieldValue reflect.Value, annotation *FieldAnno
 	if annotation.IsArray {
 		return unmarshalArray(data, fieldValue, annotation, opts)
 	}
-	
+
 	// Handle lists (slices)
 	if fieldValue.Kind() == reflect.Slice {
 		return unmarshalList(data, fieldValue, annotation, opts, structValue)
@@ -186,43 +186,43 @@ func unmarshalBitfield(data []byte, fieldValue reflect.Value, annotation *FieldA
 		endBit := annotation.BitOffset + annotation.BitLength - 1
 		endByte := endBit / 8
 		numBytes := endByte - startByte + 1
-		
+
 		// Check bounds
 		if endByte >= len(data) {
 			return fmt.Errorf("data too short for bitfield at offset %d", annotation.BitOffset)
 		}
-		
+
 		// Read all bytes that contain our bitfield
 		var value uint64
 		for i := 0; i < numBytes; i++ {
 			value = (value << 8) | uint64(data[startByte+i])
 		}
-		
+
 		// For big-endian bitfields, we have the value as a big-endian integer
 		// We need to extract the specific bits requested
-		
+
 		// Calculate bit positions within the value we read
 		// startByte is the byte where our field starts
 		// We read numBytes starting from startByte
 		// Our field starts at bit (BitOffset % 8) within the first byte
 		startBitInValue := annotation.BitOffset - (startByte * 8)
-		
+
 		// Total bits in the value we read
 		totalBitsInValue := numBytes * 8
-		
+
 		// How many bits from the right edge do we need to shift?
 		// If we have 32 bits total and want bits 0-28 (29 bits), we shift right by 3
 		bitsFromRight := totalBitsInValue - startBitInValue - annotation.BitLength
-		
+
 		// Shift right to align our field to the LSB position
 		if bitsFromRight > 0 {
 			value = value >> uint(bitsFromRight)
 		}
-		
+
 		// Mask to get only the bits we want
 		mask := (uint64(1) << annotation.BitLength) - 1
 		value = value & mask
-		
+
 		// Set the field value
 		switch fieldValue.Kind() {
 		case reflect.Bool:
@@ -241,12 +241,12 @@ func unmarshalBitfield(data []byte, fieldValue reflect.Value, annotation *FieldA
 		}
 		return nil
 	}
-	
+
 	// Little-endian bit extraction (existing code)
 	var value uint64
 	for i := 0; i < numBytes && bytePos+i < len(data); i++ {
 		byteIdx := bytePos + i
-		
+
 		// Calculate bit range for this byte
 		startBit := 0
 		if i == 0 {
@@ -263,7 +263,7 @@ func unmarshalBitfield(data []byte, fieldValue reflect.Value, annotation *FieldA
 		byteValue := (data[byteIdx] >> startBit) & byteMask
 
 		// Shift and add to value
-		shift := i * 8 - bitPos
+		shift := i*8 - bitPos
 		if shift < 0 {
 			shift = 0
 		}
@@ -347,10 +347,10 @@ func unmarshalList(data []byte, fieldValue reflect.Value, annotation *FieldAnnot
 	elemType := fieldValue.Type().Elem()
 	elemSize := getFieldSize(elemType)
 	byteOrder := getByteOrder(annotation.Endianness)
-	
+
 	// Determine the number of elements
 	var numElements int
-	
+
 	if annotation.ListSize != "" {
 		// Count-based list
 		// Find the field that contains the count
@@ -358,7 +358,7 @@ func unmarshalList(data []byte, fieldValue reflect.Value, annotation *FieldAnnot
 		if !countField.IsValid() {
 			return fmt.Errorf("list size field %s not found", annotation.ListSize)
 		}
-		
+
 		switch countField.Kind() {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			numElements = int(countField.Uint())
@@ -372,7 +372,7 @@ func unmarshalList(data []byte, fieldValue reflect.Value, annotation *FieldAnnot
 		// Count elements until we find the terminator
 		offset := annotation.ByteOffset
 		numElements = 0
-		
+
 		for offset+elemSize <= len(data) {
 			// Check if current element matches terminator
 			if bytes.Equal(data[offset:offset+elemSize], annotation.ListTerminator) {
@@ -386,22 +386,22 @@ func unmarshalList(data []byte, fieldValue reflect.Value, annotation *FieldAnnot
 		remainingBytes := len(data) - annotation.ByteOffset
 		numElements = remainingBytes / elemSize
 	}
-	
+
 	// Create slice with appropriate capacity
 	slice := reflect.MakeSlice(fieldValue.Type(), numElements, numElements)
-	
+
 	// Unmarshal each element
 	for i := 0; i < numElements; i++ {
 		elem := slice.Index(i)
 		offset := annotation.ByteOffset + (i * elemSize)
-		
+
 		if offset+elemSize > len(data) {
 			return fmt.Errorf("data too short for list element %d at offset %d", i, offset)
 		}
-		
+
 		elemData := data[offset : offset+elemSize]
 		reader := bytes.NewReader(elemData)
-		
+
 		switch elem.Kind() {
 		case reflect.Uint8:
 			elem.SetUint(uint64(elemData[0]))
@@ -430,7 +430,7 @@ func unmarshalList(data []byte, fieldValue reflect.Value, annotation *FieldAnnot
 			return fmt.Errorf("unsupported list element type: %s", elem.Kind())
 		}
 	}
-	
+
 	fieldValue.Set(slice)
 	return nil
 }
@@ -441,11 +441,25 @@ func UnmarshalStruct(data []byte, v interface{}) error {
 	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
 		return fmt.Errorf("v must be a pointer to struct")
 	}
-	
+
 	annotations, err := ParseStruct(rv.Elem().Type())
 	if err != nil {
 		return fmt.Errorf("failed to parse struct annotations: %w", err)
 	}
-	
+
 	return Unmarshal(data, v, annotations)
+}
+
+// UnmarshalWithOptionsStruct unmarshals bytes into a struct by parsing annotations from v automatically,
+// applying the provided options.
+func UnmarshalWithOptionsStruct(data []byte, v interface{}, opts *UnmarshalOptions) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("v must be a pointer to struct")
+	}
+	annotations, err := ParseStruct(rv.Elem().Type())
+	if err != nil {
+		return fmt.Errorf("failed to parse struct annotations: %w", err)
+	}
+	return UnmarshalWithOptions(data, v, annotations, opts)
 }

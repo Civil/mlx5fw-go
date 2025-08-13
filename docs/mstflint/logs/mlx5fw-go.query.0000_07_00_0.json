@@ -1,0 +1,49 @@
+{
+  "image_type": "FS4",
+  "fw_version": "16.35.4506",
+  "fw_release_date": "",
+  "mic_version": "",
+  "prs_name": "",
+  "part_number": "",
+  "description": "",
+  "product_version": "16.35.4506",
+  "rom_info": [
+    {
+      "type": "PXE",
+      "version": "3.6.902",
+      "cpu": "AMD64"
+    }
+  ],
+  "base_guid": {
+    "uid": "043f720300eae210",
+    "count": 1
+  },
+  "base_mac": {
+    "uid": "043f72eae210",
+    "count": 1
+  },
+  "image_vsd": "N/A",
+  "device_vsd": "N/A",
+  "vendor_id": 5555,
+  "device_id": 4121,
+  "psid": "MT_0000000013",
+  "security_attributes": "N/A",
+  "security_version": 0,
+  "activation_method": "all_hosts_sync,auto_activate,pending_server_reboot",
+  "default_update_method": "fw_ctrl",
+  "mcqi": {
+    "activation_data_size": 10,
+    "activation_info_size": 262152,
+    "activation_info_type": 7,
+    "activation_method": "all_hosts_sync,auto_activate,pending_server_reboot",
+    "capabilities_data_size": 10,
+    "capabilities_info_size": 262152,
+    "capabilities_info_type": 7,
+    "component_size": 262156,
+    "max_component_size": 262157,
+    "supported_info_mask": 262155,
+    "version_data_size": 10,
+    "version_info_size": 262152,
+    "version_info_type": 7
+  }
+}

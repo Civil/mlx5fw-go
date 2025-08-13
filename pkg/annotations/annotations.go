@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Endianness represents the byte order
@@ -63,6 +64,9 @@ type StructAnnotations struct {
 	// Name is the struct name
 	Name string
 }
+
+// structCache caches parsed annotations per struct type to avoid repeated reflection work
+var structCache sync.Map // map[reflect.Type]*StructAnnotations
 
 // MarshalOptions controls marshaling behavior
 type MarshalOptions struct {
@@ -150,23 +154,23 @@ func ParseTag(tag string, fieldType reflect.Type) (*FieldAnnotation, error) {
 
 		case "reserved":
 			annotation.Reserved = value == "true"
-		
+
 		case "hex_as_dec":
 			annotation.HexAsDec = value == "true"
-			
+
 		case "list_size":
 			annotation.ListSize = value
-			
+
 		case "list_terminator":
 			// Parse hex string to bytes (e.g., "0x00000000" or "00000000")
 			hexStr := strings.TrimPrefix(value, "0x")
 			hexStr = strings.TrimPrefix(hexStr, "0X")
-			
+
 			// Ensure even number of characters
 			if len(hexStr)%2 != 0 {
 				hexStr = "0" + hexStr
 			}
-			
+
 			terminator := make([]byte, len(hexStr)/2)
 			for i := 0; i < len(terminator); i++ {
 				b, err := strconv.ParseUint(hexStr[i*2:i*2+2], 16, 8)
@@ -215,6 +219,10 @@ func ParseStruct(structType reflect.Type) (*StructAnnotations, error) {
 		return nil, fmt.Errorf("expected struct type, got %s", structType.Kind())
 	}
 
+	if cached, ok := structCache.Load(structType); ok {
+		return cached.(*StructAnnotations), nil
+	}
+
 	annotations := &StructAnnotations{
 		Name:   structType.Name(),
 		Fields: make([]FieldAnnotation, 0, structType.NumField()),
@@ -224,58 +232,38 @@ func ParseStruct(structType reflect.Type) (*StructAnnotations, error) {
 
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
-		
 		// Skip unexported fields
 		if field.PkgPath != "" {
 			continue
 		}
-
 		// Parse the offset tag
 		tag := field.Tag.Get("offset")
-		
 		// Handle "-" tag which means skip this field (standard Go convention)
 		if tag == "-" {
 			continue
 		}
-		
 		fieldAnnotation, err := ParseTag(tag, field.Type)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing tag for field %s: %w", field.Name, err)
 		}
-
 		fieldAnnotation.FieldName = field.Name
-
 		// If no explicit byte offset is set, calculate it based on previous fields
 		// Note: bit: tags also set ByteOffset when converted from bit offsets
 		if tag == "" || (!strings.Contains(tag, "byte:") && !strings.Contains(tag, "bit:")) {
-			// This is a simple sequential layout assumption
-			// In practice, you might want to use the actual field size
 			fieldAnnotation.ByteOffset = maxOffset
 		}
-
 		// Update max offset based on field size
 		fieldSize := getFieldSize(field.Type)
-		
-		// For structs with explicit offsets, we need to consider the actual size
-		// of the field to determine the total struct size
-		if fieldAnnotation.ByteOffset >= maxOffset {
-			// This field starts at or after the current max offset
-			endOffset := fieldAnnotation.ByteOffset + fieldSize
-			if endOffset > maxOffset {
-				maxOffset = endOffset
-			}
-		} else {
-			// This field overlaps with previous fields (shouldn't happen with proper offsets)
-			endOffset := fieldAnnotation.ByteOffset + fieldSize
-			if endOffset > maxOffset {
-				maxOffset = endOffset
-			}
+		endOffset := fieldAnnotation.ByteOffset + fieldSize
+		if endOffset > maxOffset {
+			maxOffset = endOffset
 		}
-
 		annotations.Fields = append(annotations.Fields, *fieldAnnotation)
 	}
 
 	annotations.TotalSize = maxOffset
+	// Cache the result for future calls
+	structCache.Store(structType, annotations)
 	return annotations, nil
 }
 

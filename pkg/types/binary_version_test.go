@@ -19,10 +19,10 @@ func TestBinaryVersion_Structure(t *testing.T) {
 			name: "Basic binary version",
 			data: func() []byte {
 				buf := &bytes.Buffer{}
-				binary.Write(buf, binary.BigEndian, uint16(8))    // Length
-				binary.Write(buf, binary.BigEndian, uint8(1))     // Type
-				binary.Write(buf, binary.BigEndian, uint8(2))     // Version
-				binary.Write(buf, binary.BigEndian, uint32(0))    // Reserved
+				binary.Write(buf, binary.BigEndian, uint16(8)) // Length
+				binary.Write(buf, binary.BigEndian, uint8(1))  // Type
+				binary.Write(buf, binary.BigEndian, uint8(2))  // Version
+				binary.Write(buf, binary.BigEndian, uint32(0)) // Reserved
 				return buf.Bytes()
 			}(),
 			wantLength:   8,
@@ -34,10 +34,10 @@ func TestBinaryVersion_Structure(t *testing.T) {
 			name: "Tools area header",
 			data: func() []byte {
 				buf := &bytes.Buffer{}
-				binary.Write(buf, binary.BigEndian, uint16(64))   // Length
-				binary.Write(buf, binary.BigEndian, uint8(0x10))  // Type
-				binary.Write(buf, binary.BigEndian, uint8(3))     // Version
-				binary.Write(buf, binary.BigEndian, uint32(0))    // Reserved
+				binary.Write(buf, binary.BigEndian, uint16(64))  // Length
+				binary.Write(buf, binary.BigEndian, uint8(0x10)) // Type
+				binary.Write(buf, binary.BigEndian, uint8(3))    // Version
+				binary.Write(buf, binary.BigEndian, uint32(0))   // Reserved
 				return buf.Bytes()
 			}(),
 			wantLength:   64,
@@ -52,7 +52,7 @@ func TestBinaryVersion_Structure(t *testing.T) {
 			// Use binary.Read instead of binstruct
 			buf := bytes.NewReader(tt.data)
 			var bv BinaryVersion
-			
+
 			// Read fields manually
 			binary.Read(buf, binary.BigEndian, &bv.Length)
 			binary.Read(buf, binary.BigEndian, &bv.Type)
@@ -80,10 +80,10 @@ func TestToolsArea(t *testing.T) {
 	toolsAreaData := func() []byte {
 		buf := &bytes.Buffer{}
 		// Binary header
-		binary.Write(buf, binary.BigEndian, uint16(0x40))  // Length = 64 bytes
-		binary.Write(buf, binary.BigEndian, uint8(0x10))   // Type
-		binary.Write(buf, binary.BigEndian, uint8(1))      // Version
-		binary.Write(buf, binary.BigEndian, uint32(0))     // Reserved
+		binary.Write(buf, binary.BigEndian, uint16(0x40)) // Length = 64 bytes
+		binary.Write(buf, binary.BigEndian, uint8(0x10))  // Type
+		binary.Write(buf, binary.BigEndian, uint8(1))     // Version
+		binary.Write(buf, binary.BigEndian, uint32(0))    // Reserved
 		// Some data
 		buf.Write([]byte("TOOLS_DATA"))
 		return buf.Bytes()
@@ -147,7 +147,7 @@ func TestMagicPatternStruct(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var mps MagicPatternStruct
 			buf := bytes.NewReader(tt.data)
-			
+
 			// Read fields manually
 			binary.Read(buf, binary.BigEndian, &mps.Magic)
 			binary.Read(buf, binary.BigEndian, &mps.Reserved)
@@ -192,7 +192,7 @@ func TestBoot2Header(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var b2h Boot2Header
 			buf := bytes.NewReader(tt.data)
-			
+
 			// Read fields manually
 			binary.Read(buf, binary.BigEndian, &b2h.Magic)
 			binary.Read(buf, binary.BigEndian, &b2h.Version)
@@ -245,7 +245,7 @@ func TestHWIDRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var hwid HWIDRecord
 			buf := bytes.NewReader(tt.data)
-			
+
 			// Read fields manually
 			binary.Read(buf, binary.BigEndian, &hwid.HWID)
 			binary.Read(buf, binary.BigEndian, &hwid.ChipType)
@@ -272,7 +272,7 @@ func TestBinaryVersion_Size(t *testing.T) {
 	// Verify the structure size
 	bv := BinaryVersion{}
 	size := binary.Size(bv)
-	
+
 	expectedSize := 8 // 2 + 1 + 1 + 4
 	if size != expectedSize {
 		t.Errorf("BinaryVersion size = %d bytes, want %d bytes", size, expectedSize)

@@ -28,8 +28,8 @@ type GapInfo struct {
 	Start    uint64
 	End      uint64
 	Size     uint64
-	IsEmpty  bool   // True if gap contains only 0xFF bytes
-	IsHeader bool   // True if this is the header gap (before first section)
+	IsEmpty  bool // True if gap contains only 0xFF bytes
+	IsHeader bool // True if this is the header gap (before first section)
 }
 
 // AnalyzeGap analyzes a gap in the firmware data
@@ -73,7 +73,7 @@ func (h *GapHandler) isEmptyGap(data []byte) bool {
 			end = len(data)
 		}
 		chunk := data[i:end]
-		
+
 		if len(chunk) == chunkSize {
 			if !bytes.Equal(chunk, emptyChunk) {
 				return false
@@ -116,19 +116,19 @@ func GenerateFS4HeaderGap() []byte {
 	// - 0x08-0x0F: Magic pattern
 	// - 0x10-0x17: All 0xFF
 	// - 0x18+: HW pointers (handled separately)
-	
+
 	header := make([]byte, types.MagicPatternOffset)
-	
+
 	// Fill with 0xFF by default
 	for i := range header {
 		header[i] = 0xFF
 	}
-	
+
 	// Clear boot signature area
 	for i := 0; i < 8; i++ {
 		header[i] = 0
 	}
-	
+
 	// Magic pattern will be written separately
 	return header
 }
@@ -139,11 +139,11 @@ func ReconstructFS4Header(magicOffset uint32) []byte {
 		// Non-standard magic offset, can't use standard header
 		return nil
 	}
-	
+
 	header := GenerateFS4HeaderGap()
-	
+
 	// Write magic pattern
 	binary.BigEndian.PutUint64(header[magicOffset:], types.MagicPattern)
-	
+
 	return header
 }

@@ -22,10 +22,10 @@ func TestFS4HWPointers_Unmarshal_Extended(t *testing.T) {
 			data: func() []byte {
 				buf := &bytes.Buffer{}
 				// BootRecordPtr
-				binary.Write(buf, binary.BigEndian, uint32(0))         // Ptr
-				binary.Write(buf, binary.BigEndian, uint32(0))         // CRC
+				binary.Write(buf, binary.BigEndian, uint32(0)) // Ptr
+				binary.Write(buf, binary.BigEndian, uint32(0)) // CRC
 				// Boot2Ptr
-				binary.Write(buf, binary.BigEndian, uint32(0x1000))    // Ptr
+				binary.Write(buf, binary.BigEndian, uint32(0x1000))     // Ptr
 				binary.Write(buf, binary.BigEndian, uint32(0xABCDEF00)) // CRC
 				// TOCPtr
 				binary.Write(buf, binary.BigEndian, uint32(0x5000))
@@ -179,19 +179,17 @@ func TestFS4HWPointers_Unmarshal_Extended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use annotated version for testing
-			hwpAnnotated := &FS4HWPointersAnnotated{}
-			err := hwpAnnotated.Unmarshal(tt.data)
-			
+			// Use canonical type for testing
+			hwp := &FS4HWPointers{}
+			err := hwp.Unmarshal(tt.data)
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if err == nil {
-				// Use the annotated version directly (no conversion needed with type aliases)
-				hwp := hwpAnnotated
-				
+
 				if hwp.Boot2Ptr.Ptr != tt.wantBoot2 {
 					t.Errorf("Boot2Ptr.Ptr = 0x%X, want 0x%X", hwp.Boot2Ptr.Ptr, tt.wantBoot2)
 				}
@@ -216,7 +214,7 @@ func TestFS4HWPointers_Size_Extended(t *testing.T) {
 	// Verify the structure is exactly 128 bytes (16 pointers * 8 bytes each)
 	hwp := FS4HWPointers{}
 	size := binary.Size(hwp)
-	
+
 	expectedSize := 128
 	if size != expectedSize {
 		t.Errorf("FS4HWPointers size = %d bytes, want %d bytes", size, expectedSize)
@@ -229,25 +227,27 @@ func TestHWPointerEntry_Fields(t *testing.T) {
 		name    string
 		data    []byte
 		wantPtr uint32
-		wantCRC uint32
+		wantCRC uint16
 	}{
 		{
 			name: "Pointer with CRC",
 			data: []byte{
 				0x00, 0x00, 0x10, 0x00, // Ptr = 0x1000 (big-endian)
-				0xAB, 0xCD, 0xEF, 0x00, // CRC = 0xABCDEF00
+				0xAB, 0xCD, // Reserved (ignored)
+				0xEF, 0x00, // CRC (0xEF00)
 			},
 			wantPtr: 0x1000,
-			wantCRC: 0xABCDEF00,
+			wantCRC: 0xEF00,
 		},
 		{
 			name: "Maximum values",
 			data: []byte{
 				0xFF, 0xFF, 0xFF, 0xFF, // Ptr = 0xFFFFFFFF
-				0xFF, 0xFF, 0xFF, 0xFF, // CRC = 0xFFFFFFFF
+				0xFF, 0xFF, // Reserved
+				0xFF, 0xFF, // CRC = 0xFFFF
 			},
 			wantPtr: 0xFFFFFFFF,
-			wantCRC: 0xFFFFFFFF,
+			wantCRC: 0xFFFF,
 		},
 		{
 			name:    "All zeros",
@@ -259,15 +259,14 @@ func TestHWPointerEntry_Fields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use annotated version for testing
-			hwptrAnnotated := &HWPointerEntryAnnotated{}
-			err := hwptrAnnotated.Unmarshal(tt.data)
+			// Use canonical type for testing
+			hwptr := &HWPointerEntry{}
+			err := hwptr.Unmarshal(tt.data)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
 
-			// Use the annotated version directly (no conversion needed with type aliases)
-			hwptr := hwptrAnnotated
+			// already using canonical struct
 
 			if hwptr.Ptr != tt.wantPtr {
 				t.Errorf("Ptr = 0x%X, want 0x%X", hwptr.Ptr, tt.wantPtr)
@@ -335,7 +334,7 @@ func TestFS4HWPointers_Marshal_Extended(t *testing.T) {
 	hwp := &FS4HWPointers{
 		Boot2Ptr: HWPointerEntry{
 			Ptr: 0x1000,
-			CRC: 0xABCDEF00,
+			CRC: 0xEF00,
 		},
 		TOCPtr: HWPointerEntry{
 			Ptr: 0x5000,
@@ -360,14 +359,12 @@ func TestFS4HWPointers_Marshal_Extended(t *testing.T) {
 		t.Errorf("Marshaled size = %d, want 128", buf.Len())
 	}
 
-	// Unmarshal back and verify using annotated version
-	hwp2Annotated := &FS4HWPointersAnnotated{}
-	err = hwp2Annotated.Unmarshal(buf.Bytes())
+	// Unmarshal back and verify using canonical type
+	hwp2 := &FS4HWPointers{}
+	err = hwp2.Unmarshal(buf.Bytes())
 	if err != nil {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
-	
-	hwp2 := hwp2Annotated.FromAnnotated()
 
 	if hwp2.Boot2Ptr.Ptr != hwp.Boot2Ptr.Ptr {
 		t.Errorf("Boot2Ptr.Ptr = 0x%X, want 0x%X", hwp2.Boot2Ptr.Ptr, hwp.Boot2Ptr.Ptr)
@@ -383,11 +380,11 @@ func BenchmarkFS4HWPointers_Unmarshal_Extended(b *testing.B) {
 	binary.BigEndian.PutUint32(data[0:4], 0x1000)   // Boot2Ptr
 	binary.BigEndian.PutUint32(data[8:12], 0x5000)  // TOCPtr
 	binary.BigEndian.PutUint32(data[16:20], 0x6000) // ToolsPtr
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hwpAnnotated := &FS4HWPointersAnnotated{}
-		_ = hwpAnnotated.Unmarshal(data)
+		hwp := &FS4HWPointers{}
+		_ = hwp.Unmarshal(data)
 	}
 }
 
@@ -440,7 +437,7 @@ func TestFS4HWPointers_RealWorldPatterns_Extended(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hwp := tt.setupFunc()
-			
+
 			// Log the pattern
 			t.Logf("%s:", tt.description)
 			t.Logf("  Boot2Ptr: 0x%X", hwp.Boot2Ptr.Ptr)
@@ -450,7 +447,7 @@ func TestFS4HWPointers_RealWorldPatterns_Extended(t *testing.T) {
 			if hwp.HashesTablePtr.Ptr != 0 {
 				t.Logf("  HashesTablePtr: 0x%X", hwp.HashesTablePtr.Ptr)
 			}
-			
+
 			// Verify basic sanity
 			if hwp.Boot2Ptr.Ptr == 0 || hwp.Boot2Ptr.Ptr == 0xFFFFFFFF {
 				t.Log("Warning: Boot2Ptr is invalid")

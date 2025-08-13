@@ -22,7 +22,7 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 	if !section.HasCRC() {
 		return "CRC IGNORED", nil
 	}
-	
+
 	// Debug logging for sections that should have no CRC
 	if entry := section.GetITOCEntry(); entry != nil && entry.GetNoCRC() {
 		p.logger.Warn("Section has no_crc flag but HasCRC() returned true",
@@ -32,7 +32,7 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 			zap.Bool("no_crc", entry.GetNoCRC()),
 			zap.Uint8("crc_field", entry.GetCRC()))
 	}
-	
+
 	// Load section data if not already loaded
 	if section.GetRawData() == nil || len(section.GetRawData()) == 0 {
 		// Special case: zero-length sections don't need data loading
@@ -45,18 +45,18 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 			// Read size is just the section size
 			// The CRC is already included in the section size for CRCInSection types
 			readSize := section.Size()
-			
+
 			// Read section data
 			data, err := p.reader.ReadSection(int64(section.Offset()), readSize)
 			if err != nil {
 				return "ERROR", fmt.Errorf("failed to read section data: %w", err)
 			}
-			
+
 			// Parse the section data
 			if err := section.Parse(data); err != nil {
 				// Debug for specific sections
-				if section.Type() == types.SectionTypeResetInfo || 
-				   section.Type() == types.SectionTypeDigitalCertPtr {
+				if section.Type() == types.SectionTypeResetInfo ||
+					section.Type() == types.SectionTypeDigitalCertPtr {
 					p.logger.Error("Section parse failed",
 						zap.String("type", section.TypeName()),
 						zap.Error(err),
@@ -68,7 +68,7 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 			}
 		}
 	}
-	
+
 	// Debug: Log CRC info for IMAGE_SIGNATURE sections
 	if section.Type() == types.SectionTypeImageSignature256 || section.Type() == types.SectionTypeImageSignature512 {
 		if entry := section.GetITOCEntry(); entry != nil {
@@ -82,7 +82,7 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 
 	// Get section's CRC type
 	crcType := section.CRCType()
-	
+
 	// Debug: Log sections with CRC type mismatch
 	if crcType != types.CRCNone {
 		if entry := section.GetITOCEntry(); entry != nil && entry.GetNoCRC() {
@@ -93,25 +93,25 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 				zap.Uint8("crc_field", entry.GetCRC()))
 		}
 	}
-	
+
 	switch crcType {
 	case types.CRCNone:
 		return "CRC IGNORED", nil
-		
+
 	case types.CRCInITOCEntry:
 		// For sections with CRC in ITOC entry, we need to verify against the entry CRC
 		if entry := section.GetITOCEntry(); entry != nil {
 			// Debug logging for specific section types
-			if section.Type() == types.SectionTypeResetInfo || 
-			   section.Type() == types.SectionTypeDigitalCertPtr ||
-			   section.Type() == types.SectionTypeHashesTable {
-				p.logger.Info("Verifying CRC for section",
+			if section.Type() == types.SectionTypeResetInfo ||
+				section.Type() == types.SectionTypeDigitalCertPtr ||
+				section.Type() == types.SectionTypeHashesTable {
+				p.logger.Debug("Verifying CRC for section",
 					zap.String("type", section.TypeName()),
 					zap.Uint32("expected_crc", section.GetCRC()),
 					zap.Uint32("size", section.Size()),
 					zap.String("crc_type", crcType.String()))
 			}
-			
+
 			// Use the section's VerifyCRC method which handles the correct CRC calculation
 			if err := section.VerifyCRC(); err != nil {
 				if errors.Is(err, pkgerrors.ErrCRCMismatch) {
@@ -125,7 +125,7 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 			return "OK", nil
 		}
 		return "NO ENTRY", nil
-		
+
 	case types.CRCInSection:
 		// For sections with embedded CRC, use the section's VerifyCRC method
 		if err := section.VerifyCRC(); err != nil {
@@ -138,7 +138,7 @@ func (p *Parser) VerifySectionNew(section interfaces.SectionVerifier) (string, e
 			return "ERROR", err
 		}
 		return "OK", nil
-		
+
 	default:
 		return "UNKNOWN CRC TYPE", nil
 	}
@@ -161,22 +161,22 @@ func (p *Parser) FindSectionNew(sectionName string, sectionID int) interfaces.Co
 	if sectionType == 0 {
 		return nil
 	}
-	
+
 	sections := p.sections[sectionType]
 	if len(sections) == 0 {
 		return nil
 	}
-	
+
 	// If no specific ID requested, return first section
 	if sectionID == -1 {
 		return sections[0]
 	}
-	
+
 	// Return section at specific index
 	if sectionID < len(sections) {
 		return sections[sectionID]
 	}
-	
+
 	return nil
 }
 
@@ -186,7 +186,7 @@ func (p *Parser) LoadSectionData(section interfaces.SectionParser) error {
 	if len(section.GetRawData()) > 0 {
 		return nil
 	}
-	
+
 	// Read section data
 	data, err := p.reader.ReadSection(int64(section.Offset()), section.Size())
 	if err != nil {
@@ -197,7 +197,7 @@ func (p *Parser) LoadSectionData(section interfaces.SectionParser) error {
 			zap.Error(err))
 		return err
 	}
-	
+
 	// Parse the data into the section
 	if err := section.Parse(data); err != nil {
 		p.logger.Error("Failed to parse section data",
@@ -205,6 +205,6 @@ func (p *Parser) LoadSectionData(section interfaces.SectionParser) error {
 			zap.Error(err))
 		return err
 	}
-	
+
 	return nil
 }

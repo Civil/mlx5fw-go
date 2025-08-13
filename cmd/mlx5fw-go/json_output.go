@@ -4,30 +4,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	
+
+	cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
 
 // QueryJSONOutput represents the JSON structure for query command output
 type QueryJSONOutput struct {
-	ImageType       string          `json:"image_type"`
-	FWVersion       string          `json:"fw_version"`
-	FWReleaseDate   string          `json:"fw_release_date"`
-	MICVersion      string          `json:"mic_version"`
-	PRSName         string          `json:"prs_name"`
-	PartNumber      string          `json:"part_number"`
-	Description     string          `json:"description"`
-	ProductVersion  string          `json:"product_version,omitempty"`
-	RomInfo         []RomInfoJSON   `json:"rom_info,omitempty"`
-	BaseGUID        *UIDInfo        `json:"base_guid"`
-	BaseMAC         *UIDInfo        `json:"base_mac"`
-	ImageVSD        string          `json:"image_vsd"`
-	DeviceVSD       string          `json:"device_vsd"`
-	PSID            string          `json:"psid"`
-	SecurityAttrs   string          `json:"security_attributes"`
-	SecurityVer     int             `json:"security_version"`
-	DefaultUpdateMethod string      `json:"default_update_method"`
+	ImageType           string        `json:"image_type"`
+	FWVersion           string        `json:"fw_version"`
+	FWReleaseDate       string        `json:"fw_release_date"`
+	MICVersion          string        `json:"mic_version"`
+	PRSName             string        `json:"prs_name"`
+	PartNumber          string        `json:"part_number"`
+	Description         string        `json:"description"`
+	ProductVersion      string        `json:"product_version,omitempty"`
+	RomInfo             []RomInfoJSON `json:"rom_info,omitempty"`
+	BaseGUID            *UIDInfo      `json:"base_guid"`
+	BaseMAC             *UIDInfo      `json:"base_mac"`
+	ImageVSD            string        `json:"image_vsd"`
+	DeviceVSD           string        `json:"device_vsd"`
+	VendorID            uint16        `json:"vendor_id,omitempty"`
+	DeviceID            uint16        `json:"device_id,omitempty"`
+	PSID                string        `json:"psid"`
+	SecurityAttrs       string        `json:"security_attributes"`
+	SecurityVer         int           `json:"security_version"`
+	ActivationMethod    string        `json:"activation_method,omitempty"`
+	DefaultUpdateMethod string        `json:"default_update_method"`
 }
 
 // UIDInfo represents UID information in JSON
@@ -63,22 +67,25 @@ type SectionInfoJSON struct {
 // convertToQueryJSON converts FirmwareInfo to JSON output structure
 func convertToQueryJSON(info *interfaces.FirmwareInfo) *QueryJSONOutput {
 	output := &QueryJSONOutput{
-		ImageType:       info.Format,
-		FWVersion:       info.FWVersion,
-		FWReleaseDate:   info.FWReleaseDate,
-		MICVersion:      info.MICVersion,
-		PRSName:         info.PRSName,
-		PartNumber:      info.PartNumber,
-		Description:     info.Description,
-		ProductVersion:  info.ProductVersion,
-		ImageVSD:        FormatNA(info.ImageVSD),
-		DeviceVSD:       FormatNA(info.DeviceVSD),
-		PSID:            info.PSID,
-		SecurityAttrs:   FormatNA(info.SecurityAttrs),
-		SecurityVer:     info.SecurityVer,
+		ImageType:           info.Format,
+		FWVersion:           info.FWVersion,
+		FWReleaseDate:       info.FWReleaseDate,
+		MICVersion:          info.MICVersion,
+		PRSName:             info.PRSName,
+		PartNumber:          info.PartNumber,
+		Description:         info.Description,
+		ProductVersion:      info.ProductVersion,
+		ImageVSD:            cliutil.FormatNA(info.ImageVSD),
+		DeviceVSD:           cliutil.FormatNA(info.DeviceVSD),
+		VendorID:            info.VendorID,
+		DeviceID:            info.DeviceID,
+		PSID:                info.PSID,
+		SecurityAttrs:       cliutil.FormatNA(info.SecurityAttrs),
+		SecurityVer:         info.SecurityVer,
+		ActivationMethod:    info.ActivationMethod,
 		DefaultUpdateMethod: "fw_ctrl",
 	}
-	
+
 	// Convert ROM info
 	for _, rom := range info.RomInfo {
 		output.RomInfo = append(output.RomInfo, RomInfoJSON{
@@ -87,7 +94,7 @@ func convertToQueryJSON(info *interfaces.FirmwareInfo) *QueryJSONOutput {
 			CPU:     rom.CPU,
 		})
 	}
-	
+
 	// Convert GUID info
 	if info.BaseGUID != 0 {
 		output.BaseGUID = &UIDInfo{
@@ -100,7 +107,7 @@ func convertToQueryJSON(info *interfaces.FirmwareInfo) *QueryJSONOutput {
 			Count: info.BaseGUIDNum,
 		}
 	}
-	
+
 	// Convert MAC info
 	if info.BaseMAC != 0 {
 		output.BaseMAC = &UIDInfo{
@@ -113,7 +120,7 @@ func convertToQueryJSON(info *interfaces.FirmwareInfo) *QueryJSONOutput {
 			Count: info.BaseMACNum,
 		}
 	}
-	
+
 	return output
 }
 
@@ -130,7 +137,6 @@ func getCRCTypeName(crcType types.CRCType) string {
 		return fmt.Sprintf("UNKNOWN_%d", crcType)
 	}
 }
-
 
 // outputJSON outputs data as JSON
 func outputJSON(data interface{}) error {

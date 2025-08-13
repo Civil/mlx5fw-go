@@ -11,14 +11,14 @@ type TestStruct struct {
 	Field1 uint32 `offset:"byte:0,endian:be"`
 	Field2 uint16 `offset:"byte:4,endian:be"`
 	Field3 uint8  `offset:"byte:6"`
-	
+
 	// Bitfield
 	BitField1 uint8 `offset:"byte:7,bit:0,len:3"`
 	BitField2 uint8 `offset:"byte:7,bit:3,len:5"`
-	
+
 	// Array
 	Array1 [4]uint32 `offset:"byte:8,endian:be"`
-	
+
 	// Skip and reserved
 	_        uint32 `offset:"byte:24,skip:true"`
 	Reserved uint32 `offset:"byte:28,reserved:true"`

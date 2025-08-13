@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	
+
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
@@ -27,27 +27,27 @@ func NewVPD_R0Section(base *interfaces.BaseSection) *VPD_R0Section {
 // Parse parses the VPD_R0 section data
 func (s *VPD_R0Section) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	// Handle zero-length VPD_R0 sections
 	if len(data) == 0 {
 		// VPD_R0 sections can have size 0 but still have CRC in ITOC entry
 		// No header to parse in this case
 		return nil
 	}
-	
+
 	if len(data) < 64 {
 		return merry.New("VPD_R0 section too small")
 	}
-	
+
 	s.Header = &types.VPD_R0{}
 	if err := s.Header.Unmarshal(data[:64]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 64 {
 		s.Data = data[64:]
 	}
-	
+
 	return nil
 }
 
@@ -63,7 +63,7 @@ func (s *VPD_R0Section) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // VPD_R0 needs binary data
 	}
-	
+
 	if s.Header != nil {
 		sectionJSON.VPD_R0 = &types.VPD_R0JSON{
 			ID:       string(s.Header.ID[:]),
@@ -71,7 +71,7 @@ func (s *VPD_R0Section) MarshalJSON() ([]byte, error) {
 			DataSize: len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -92,20 +92,20 @@ func NewFWNVLogSection(base *interfaces.BaseSection) *FWNVLogSection {
 // Parse parses the FW_NV_LOG section data
 func (s *FWNVLogSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 64 {
 		return merry.New("FW_NV_LOG section too small")
 	}
-	
+
 	s.Header = &types.FWNVLog{}
 	if err := s.Header.Unmarshal(data[:64]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 64 {
 		s.Data = data[64:]
 	}
-	
+
 	return nil
 }
 
@@ -121,7 +121,7 @@ func (s *FWNVLogSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // FW_NV_LOG needs binary data
 	}
-	
+
 	if s.Header != nil {
 		sectionJSON.FWNVLog = &types.FWNVLogJSON{
 			LogVersion: s.Header.LogVersion,
@@ -130,7 +130,7 @@ func (s *FWNVLogSection) MarshalJSON() ([]byte, error) {
 			DataSize:   len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -151,20 +151,20 @@ func NewNVDataSection(base *interfaces.BaseSection) *NVDataSection {
 // Parse parses the NV_DATA section data
 func (s *NVDataSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 64 {
 		return merry.New("NV_DATA section too small")
 	}
-	
+
 	s.Header = &types.NVData{}
 	if err := s.Header.Unmarshal(data[:64]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 64 {
 		s.Data = data[64:]
 	}
-	
+
 	return nil
 }
 
@@ -180,7 +180,7 @@ func (s *NVDataSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // NV_DATA needs binary data
 	}
-	
+
 	if s.Header != nil {
 		sectionJSON.NVData = &types.NVDataJSON{
 			Version:        s.Header.Version,
@@ -188,7 +188,7 @@ func (s *NVDataSection) MarshalJSON() ([]byte, error) {
 			ActualDataSize: len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -209,20 +209,20 @@ func NewCRDumpMaskDataSection(base *interfaces.BaseSection) *CRDumpMaskDataSecti
 // Parse parses the CRDUMP_MASK_DATA section data
 func (s *CRDumpMaskDataSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 40 {
 		return merry.New("CRDUMP_MASK_DATA section too small")
 	}
-	
+
 	s.Header = &types.CRDumpMaskData{}
 	if err := s.Header.Unmarshal(data[:40]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 40 {
 		s.Data = data[40:]
 	}
-	
+
 	return nil
 }
 
@@ -238,7 +238,7 @@ func (s *CRDumpMaskDataSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // CRDUMP_MASK_DATA needs binary data
 	}
-	
+
 	if s.Header != nil {
 		sectionJSON.CRDumpMaskData = &types.CRDumpMaskDataJSON{
 			Version:  s.Header.Version,
@@ -246,7 +246,7 @@ func (s *CRDumpMaskDataSection) MarshalJSON() ([]byte, error) {
 			DataSize: len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -267,20 +267,20 @@ func NewFWInternalUsageSection(base *interfaces.BaseSection) *FWInternalUsageSec
 // Parse parses the FW_INTERNAL_USAGE section data
 func (s *FWInternalUsageSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 64 {
 		return merry.New("FW_INTERNAL_USAGE section too small")
 	}
-	
+
 	s.Header = &types.FWInternalUsage{}
 	if err := s.Header.Unmarshal(data[:64]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 64 {
 		s.Data = data[64:]
 	}
-	
+
 	return nil
 }
 
@@ -296,7 +296,7 @@ func (s *FWInternalUsageSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // FW_INTERNAL_USAGE needs binary data
 	}
-	
+
 	if s.Header != nil {
 		sectionJSON.FWInternalUsage = &types.FWInternalUsageJSON{
 			Version:  s.Header.Version,
@@ -305,7 +305,7 @@ func (s *FWInternalUsageSection) MarshalJSON() ([]byte, error) {
 			DataSize: len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -326,20 +326,20 @@ func NewProgrammableHWFWSection(base *interfaces.BaseSection) *ProgrammableHWFWS
 // Parse parses the PROGRAMMABLE_HW_FW section data
 func (s *ProgrammableHWFWSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 64 {
 		return merry.New("PROGRAMMABLE_HW_FW section too small")
 	}
-	
+
 	s.Header = &types.ProgrammableHWFW{}
 	if err := s.Header.Unmarshal(data[:64]); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	if len(data) > 64 {
 		s.Data = data[64:]
 	}
-	
+
 	return nil
 }
 
@@ -355,7 +355,7 @@ func (s *ProgrammableHWFWSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // PROGRAMMABLE_HW_FW needs binary data
 	}
-	
+
 	if s.Header != nil {
 		sectionJSON.ProgrammableHWFW = &types.ProgrammableHWFWJSON{
 			Version:     s.Header.Version,
@@ -367,7 +367,7 @@ func (s *ProgrammableHWFWSection) MarshalJSON() ([]byte, error) {
 			DataSize:    len(s.Data),
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -387,12 +387,12 @@ func NewDigitalCertPtrSection(base *interfaces.BaseSection) *DigitalCertPtrSecti
 // Parse parses the DIGITAL_CERT_PTR section data
 func (s *DigitalCertPtrSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	s.CertPtr = &types.DigitalCertPtr{}
 	if err := s.CertPtr.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	return nil
 }
 
@@ -408,7 +408,7 @@ func (s *DigitalCertPtrSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // DIGITAL_CERT_PTR needs binary data due to variable structure
 	}
-	
+
 	if s.CertPtr != nil {
 		sectionJSON.DigitalCertPtr = &types.DigitalCertPtrJSON{
 			CertType:   s.CertPtr.CertType,
@@ -416,7 +416,7 @@ func (s *DigitalCertPtrSection) MarshalJSON() ([]byte, error) {
 			CertSize:   s.CertPtr.CertSize,
 		}
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }
 
@@ -436,12 +436,12 @@ func NewDigitalCertRWSection(base *interfaces.BaseSection) *DigitalCertRWSection
 // Parse parses the DIGITAL_CERT_RW section data
 func (s *DigitalCertRWSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	s.Cert = &types.DigitalCertRW{}
 	if err := s.Cert.Unmarshal(data); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	return nil
 }
 
@@ -457,7 +457,7 @@ func (s *DigitalCertRWSection) MarshalJSON() ([]byte, error) {
 		IsDeviceData: s.IsDeviceData(),
 		HasRawData:   true, // DIGITAL_CERT_RW needs binary data for certificate
 	}
-	
+
 	if s.Cert != nil {
 		// Find actual certificate size
 		certSize := 0
@@ -466,7 +466,7 @@ func (s *DigitalCertRWSection) MarshalJSON() ([]byte, error) {
 				certSize = i + 1
 			}
 		}
-		
+
 		digitalCertRW := &types.DigitalCertRWJSON{
 			CertType:       s.Cert.CertType,
 			CertSize:       s.Cert.CertSize,
@@ -474,13 +474,13 @@ func (s *DigitalCertRWSection) MarshalJSON() ([]byte, error) {
 			ValidTo:        s.Cert.ValidTo,
 			ActualCertSize: certSize,
 		}
-		
+
 		if certSize > 0 && certSize <= 256 { // Include small cert preview
 			digitalCertRW.CertPreview = hex.EncodeToString(s.Cert.Certificate[:certSize])
 		}
-		
+
 		sectionJSON.DigitalCertRW = digitalCertRW
 	}
-	
+
 	return json.Marshal(sectionJSON)
 }

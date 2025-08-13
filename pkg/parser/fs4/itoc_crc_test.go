@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
-	
+
 	"github.com/Civil/mlx5fw-go/pkg/parser"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 )
 
 func TestVerifyITOCHeaderCRC(t *testing.T) {
 	crcCalculator := parser.NewCRCCalculator()
-	
+
 	tests := []struct {
 		name        string
 		header      []byte
@@ -74,13 +74,13 @@ func TestVerifyITOCHeaderCRC(t *testing.T) {
 			name: "Real-world ITOC header pattern",
 			header: func() []byte {
 				h := make([]byte, 32)
-				binary.BigEndian.PutUint32(h[0:4], 0x49544F43)   // "ITOC"
-				binary.BigEndian.PutUint32(h[4:8], 0)            // Signature1
-				binary.BigEndian.PutUint32(h[8:12], 0)           // Signature2
-				binary.BigEndian.PutUint32(h[12:16], 0)          // Signature3
-				binary.BigEndian.PutUint32(h[16:20], 2)          // Version
-				binary.BigEndian.PutUint32(h[20:24], 0)          // Reserved
-				binary.BigEndian.PutUint32(h[24:28], 0x1234)     // ITOCEntryCRC
+				binary.BigEndian.PutUint32(h[0:4], 0x49544F43) // "ITOC"
+				binary.BigEndian.PutUint32(h[4:8], 0)          // Signature1
+				binary.BigEndian.PutUint32(h[8:12], 0)         // Signature2
+				binary.BigEndian.PutUint32(h[12:16], 0)        // Signature3
+				binary.BigEndian.PutUint32(h[16:20], 2)        // Version
+				binary.BigEndian.PutUint32(h[20:24], 0)        // Reserved
+				binary.BigEndian.PutUint32(h[24:28], 0x1234)   // ITOCEntryCRC
 				// Calculate correct CRC
 				crc := CalculateITOCHeaderCRC(h, crcCalculator)
 				binary.BigEndian.PutUint32(h[28:32], uint32(crc))
@@ -89,11 +89,11 @@ func TestVerifyITOCHeaderCRC(t *testing.T) {
 			expectError: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := VerifyITOCHeaderCRC(tt.header, crcCalculator)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("Expected error but got none")
 			} else if !tt.expectError && err != nil {
@@ -107,20 +107,20 @@ func TestVerifyITOCHeaderCRC(t *testing.T) {
 
 func TestCalculateITOCHeaderCRC(t *testing.T) {
 	crcCalculator := parser.NewCRCCalculator()
-	
+
 	// Test with known header
 	header := make([]byte, 32)
 	binary.BigEndian.PutUint32(header[0:4], types.ITOCSignature)
 	binary.BigEndian.PutUint32(header[16:20], 2) // Version
-	
+
 	crc := CalculateITOCHeaderCRC(header, crcCalculator)
-	
+
 	// The CRC should be consistent
 	expectedCRC := uint16(0x0876) // From our demo output
 	if crc != expectedCRC {
 		t.Errorf("CRC mismatch: got 0x%04X, expected 0x%04X", crc, expectedCRC)
 	}
-	
+
 	// Test that changing header data changes CRC
 	header[16] = 3 // Change version
 	crc2 := CalculateITOCHeaderCRC(header, crcCalculator)
@@ -131,22 +131,22 @@ func TestCalculateITOCHeaderCRC(t *testing.T) {
 
 func TestUpdateITOCHeaderCRC(t *testing.T) {
 	crcCalculator := parser.NewCRCCalculator()
-	
+
 	// Create header with invalid CRC
 	header := make([]byte, 32)
 	binary.BigEndian.PutUint32(header[0:4], types.ITOCSignature)
-	binary.BigEndian.PutUint32(header[16:20], 2) // Version
+	binary.BigEndian.PutUint32(header[16:20], 2)          // Version
 	binary.BigEndian.PutUint32(header[28:32], 0xDEADBEEF) // Wrong CRC
-	
+
 	// Update CRC
 	UpdateITOCHeaderCRC(header, crcCalculator)
-	
+
 	// Verify it's now correct
 	err := VerifyITOCHeaderCRC(header, crcCalculator)
 	if err != nil {
 		t.Errorf("CRC verification failed after update: %v", err)
 	}
-	
+
 	// Check the actual CRC value
 	storedCRC := binary.BigEndian.Uint32(header[28:32])
 	if storedCRC == 0xDEADBEEF {
@@ -162,7 +162,7 @@ func BenchmarkCalculateITOCHeaderCRC(b *testing.B) {
 	crcCalculator := parser.NewCRCCalculator()
 	header := make([]byte, 32)
 	binary.BigEndian.PutUint32(header[0:4], types.ITOCSignature)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = CalculateITOCHeaderCRC(header, crcCalculator)

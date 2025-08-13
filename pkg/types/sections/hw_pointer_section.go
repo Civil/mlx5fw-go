@@ -25,34 +25,29 @@ func NewHWPointerSection(base *interfaces.BaseSection) *HWPointerSection {
 // Parse parses the HW Pointer section data
 func (s *HWPointerSection) Parse(data []byte) error {
 	s.SetRawData(data)
-	
+
 	if len(data) < 4 {
 		return merry.New("HW pointer section too small")
 	}
-	
+
 	// Determine format based on data size and content
 	// FS5 has larger pointer structure
 	if len(data) >= 0x100 { // FS5 size threshold
 		s.Format = types.FormatFS5
-		// Use annotated version for parsing
-		annotated := &types.FS5HWPointersAnnotated{}
-		if err := annotated.Unmarshal(data); err != nil {
+		pointers := &types.FS5HWPointers{}
+		if err := pointers.Unmarshal(data); err != nil {
 			return merry.Wrap(err)
 		}
-		// Use annotated format directly
-		s.FS5Pointers = annotated
+		s.FS5Pointers = pointers
 	} else {
 		s.Format = types.FormatFS4
-		// Use annotated version for parsing
-		annotated := &types.FS4HWPointersAnnotated{}
-		if err := annotated.Unmarshal(data); err != nil {
+		pointers := &types.FS4HWPointers{}
+		if err := pointers.Unmarshal(data); err != nil {
 			return merry.Wrap(err)
 		}
-		// Use annotated format directly
-		s.FS4Pointers = annotated
+		s.FS4Pointers = pointers
 	}
-	
+
 	s.HasRawData = false // Successfully parsed
 	return nil
 }
-

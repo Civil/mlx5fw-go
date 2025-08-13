@@ -24,38 +24,38 @@ func newMockFirmwareReader(data []byte) *parser.FirmwareReader {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	if _, err := tmpfile.Write(data); err != nil {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
 		panic(err)
 	}
 	tmpfile.Close()
-	
+
 	reader, err := parser.NewFirmwareReader(tmpfile.Name(), zaptest.NewLogger(&testing.T{}))
 	if err != nil {
 		os.Remove(tmpfile.Name())
 		panic(err)
 	}
-	
+
 	return reader
 }
 
 // createMockFS4Firmware creates a mock FS4 firmware structure
 func createMockFS4Firmware() []byte {
 	var buf bytes.Buffer
-	
+
 	// Add padding before magic - use a standard search offset
 	buf.Write(make([]byte, 0x10000))
-	
+
 	// Add magic pattern at 0x10000
 	magicBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(magicBytes, types.MagicPattern)
 	buf.Write(magicBytes)
-	
+
 	// Add padding before HW pointers
 	buf.Write(make([]byte, 0x10))
-	
+
 	// Add HW pointers at 0x10018
 	hwPtrs := &types.FS4HWPointers{
 		BootRecordPtr: types.HWPointerEntry{Ptr: 0x0000},
@@ -67,13 +67,13 @@ func createMockFS4Firmware() []byte {
 	hwBuf := &bytes.Buffer{}
 	binary.Write(hwBuf, binary.BigEndian, hwPtrs)
 	buf.Write(hwBuf.Bytes())
-	
+
 	// Pad to ITOC location (0x15000)
 	currentSize := buf.Len()
 	if currentSize < 0x15000 {
 		buf.Write(make([]byte, 0x15000-currentSize))
 	}
-	
+
 	// Add ITOC header at 0x15000
 	itocHeader := &types.ITOCHeader{
 		Signature0: types.ITOCSignature,
@@ -82,23 +82,23 @@ func createMockFS4Firmware() []byte {
 	itocBuf := &bytes.Buffer{}
 	binary.Write(itocBuf, binary.BigEndian, itocHeader)
 	buf.Write(itocBuf.Bytes())
-	
+
 	// Add some ITOC entries
 	// Entry 1: BOOT3_CODE
 	entry1 := createITOCEntry(0x0f, 0x2590, 0xa000, 0x2dda, false)
 	buf.Write(entry1)
-	
+
 	// Entry 2: End marker
 	endEntry := createITOCEntry(0xff, 0, 0, 0, false)
 	buf.Write(endEntry)
-	
+
 	// Pad to DTOC location (end - 0x1000)
 	targetSize := 0x100000 // 1MB
 	currentSize = buf.Len()
 	if currentSize < targetSize-0x1000 {
 		buf.Write(make([]byte, targetSize-0x1000-currentSize))
 	}
-	
+
 	// Add DTOC header
 	dtocHeader := &types.ITOCHeader{
 		Signature0: types.DTOCSignature,
@@ -107,29 +107,29 @@ func createMockFS4Firmware() []byte {
 	dtocBuf := &bytes.Buffer{}
 	binary.Write(dtocBuf, binary.BigEndian, dtocHeader)
 	buf.Write(dtocBuf.Bytes())
-	
+
 	// Pad to target size
 	currentSize = buf.Len()
 	if currentSize < targetSize {
 		buf.Write(make([]byte, targetSize-currentSize))
 	}
-	
+
 	return buf.Bytes()
 }
 
 // createITOCEntry creates an ITOC entry with the given parameters
 func createITOCEntry(sectionType uint8, size uint32, addr uint32, crc uint16, noCRC bool) []byte {
 	entry := &types.ITOCEntry{}
-	
+
 	// Set the annotated fields directly
 	entry.Type = sectionType
-	entry.SizeDwords = size / 4 // Size is stored in dwords
+	entry.SizeDwords = size / 4      // Size is stored in dwords
 	entry.FlashAddrDwords = addr / 8 // Flash addr handling
 	entry.SectionCRC = crc
 	if noCRC {
 		entry.CRCField = 1 // Set NoCRC flag
 	}
-	
+
 	// Marshal to bytes
 	data, err := entry.Marshal()
 	if err != nil {
@@ -143,7 +143,7 @@ func createITOCEntry(sectionType uint8, size uint32, addr uint32, crc uint16, no
 		}
 		return buf
 	}
-	
+
 	return data
 }
 
@@ -153,24 +153,24 @@ func TestNewParser(t *testing.T) {
 	reader := newMockFirmwareReader(mockData)
 	defer reader.Close()
 	defer os.Remove("mock_firmware_*.bin")
-	
+
 	parser := NewParser(reader, logger)
 	if parser == nil {
 		t.Fatal("NewParser() returned nil")
 	}
-	
+
 	if parser.reader != reader {
 		t.Error("Parser reader not set correctly")
 	}
-	
+
 	if parser.logger != logger {
 		t.Error("Parser logger not set correctly")
 	}
-	
+
 	if parser.sections == nil {
 		t.Error("Parser sections map not initialized")
 	}
-	
+
 	if parser.crc == nil {
 		t.Error("Parser CRC calculator not initialized")
 	}
@@ -182,37 +182,37 @@ func TestParser_Parse(t *testing.T) {
 	reader := newMockFirmwareReader(mockData)
 	defer reader.Close()
 	defer os.Remove("mock_firmware_*.bin")
-	
+
 	parser := NewParser(reader, logger)
-	
+
 	err := parser.Parse()
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	
+
 	// Verify magic offset was found
 	if parser.magicOffset != 0x10000 {
 		t.Errorf("Magic offset = 0x%x, want 0x10000", parser.magicOffset)
 	}
-	
+
 	// Verify HW pointers were parsed
 	if parser.hwPointers == nil {
 		t.Fatal("HW pointers not parsed")
 	}
-	
+
 	if parser.hwPointers.Boot2Ptr.Ptr != 0x12000 {
 		t.Errorf("Boot2 pointer = 0x%x, want 0x12000", parser.hwPointers.Boot2Ptr.Ptr)
 	}
-	
+
 	// Verify ITOC was parsed
 	if parser.itocHeader == nil {
 		t.Fatal("ITOC header not parsed")
 	}
-	
+
 	if parser.itocHeader.Signature0 != types.ITOCSignature {
 		t.Errorf("ITOC signature = 0x%x, want 0x%x", parser.itocHeader.Signature0, types.ITOCSignature)
 	}
-	
+
 	// Verify sections were found
 	if len(parser.sections) == 0 {
 		t.Error("No sections found")
@@ -225,9 +225,9 @@ func TestParser_GetFormat(t *testing.T) {
 	reader := newMockFirmwareReader(mockData)
 	defer reader.Close()
 	defer os.Remove("mock_firmware_*.bin")
-	
+
 	parser := NewParser(reader, logger)
-	
+
 	format := parser.GetFormat()
 	if format != types.FormatFS4 {
 		t.Errorf("GetFormat() = %v, want %v", format, types.FormatFS4)
@@ -240,19 +240,19 @@ func TestParser_Addresses(t *testing.T) {
 	reader := newMockFirmwareReader(mockData)
 	defer reader.Close()
 	defer os.Remove("mock_firmware_*.bin")
-	
+
 	parser := NewParser(reader, logger)
 	err := parser.Parse()
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	
+
 	// Test GetITOCAddress
 	itocAddr := parser.GetITOCAddress()
 	if itocAddr != 0x15000 {
 		t.Errorf("GetITOCAddress() = 0x%x, want 0x15000", itocAddr)
 	}
-	
+
 	// Test GetDTOCAddress
 	dtocAddr := parser.GetDTOCAddress()
 	expectedDTOC := uint32(0xff000) // 1MB - 0x1000
@@ -267,14 +267,14 @@ func TestParser_VerifySection(t *testing.T) {
 	reader := newMockFirmwareReader(mockData)
 	defer reader.Close()
 	defer os.Remove("mock_firmware_*.bin")
-	
+
 	parser := NewParser(reader, logger)
-	
+
 	tests := []struct {
-		name         string
-		section      *interfaces.Section
-		expectedMsg  string
-		expectErr    bool
+		name        string
+		section     *interfaces.Section
+		expectedMsg string
+		expectErr   bool
 	}{
 		{
 			name: "CRC None",
@@ -308,11 +308,11 @@ func TestParser_VerifySection(t *testing.T) {
 			expectedMsg: "NO ENTRY",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			msg, err := parser.VerifySection(tt.section)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Error("VerifySection() expected error but got none")
@@ -332,7 +332,7 @@ func TestParser_VerifySection(t *testing.T) {
 func TestTOCReader_GetCRCType(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tocReader := parser.NewTOCReader(logger)
-	
+
 	tests := []struct {
 		name     string
 		entry    *types.ITOCEntry
@@ -363,7 +363,7 @@ func TestTOCReader_GetCRCType(t *testing.T) {
 			expected: types.CRCInSection,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tocReader.GetCRCType(tt.entry)
@@ -376,21 +376,21 @@ func TestTOCReader_GetCRCType(t *testing.T) {
 
 func TestParser_ParseEncryptedFirmware(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	// Create mock encrypted firmware
 	var buf bytes.Buffer
-	
+
 	// Add padding before magic - use a standard search offset
 	buf.Write(make([]byte, 0x10000))
-	
+
 	// Add magic pattern at 0x10000
 	magicBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(magicBytes, types.MagicPattern)
 	buf.Write(magicBytes)
-	
+
 	// Add padding before HW pointers
 	buf.Write(make([]byte, 0x10))
-	
+
 	// Add HW pointers at 0x10018
 	hwPtrs := &types.FS4HWPointers{
 		BootRecordPtr:       types.HWPointerEntry{Ptr: 0x0000},
@@ -402,13 +402,13 @@ func TestParser_ParseEncryptedFirmware(t *testing.T) {
 	hwBuf := &bytes.Buffer{}
 	binary.Write(hwBuf, binary.BigEndian, hwPtrs)
 	buf.Write(hwBuf.Bytes())
-	
+
 	// Add invalid ITOC at expected location (0x17000) to simulate encrypted
 	currentSize := buf.Len()
 	if currentSize < 0x17000 {
 		buf.Write(make([]byte, 0x17000-currentSize))
 	}
-	
+
 	// Add invalid ITOC header (wrong signature)
 	invalidHeader := &types.ITOCHeader{
 		Signature0: 0xDEADBEEF, // Invalid signature
@@ -417,13 +417,13 @@ func TestParser_ParseEncryptedFirmware(t *testing.T) {
 	invalidBuf := &bytes.Buffer{}
 	binary.Write(invalidBuf, binary.BigEndian, invalidHeader)
 	buf.Write(invalidBuf.Bytes())
-	
+
 	// Add valid ITOC at alternate location (0x18000)
 	currentSize = buf.Len()
 	if currentSize < 0x18000 {
 		buf.Write(make([]byte, 0x18000-currentSize))
 	}
-	
+
 	// Add valid ITOC header
 	validHeader := &types.ITOCHeader{
 		Signature0: types.ITOCSignature,
@@ -432,30 +432,30 @@ func TestParser_ParseEncryptedFirmware(t *testing.T) {
 	validBuf := &bytes.Buffer{}
 	binary.Write(validBuf, binary.BigEndian, validHeader)
 	buf.Write(validBuf.Bytes())
-	
+
 	// Pad to 1MB
 	targetSize := 0x100000
 	currentSize = buf.Len()
 	if currentSize < targetSize {
 		buf.Write(make([]byte, targetSize-currentSize))
 	}
-	
+
 	reader := newMockFirmwareReader(buf.Bytes())
 	defer reader.Close()
 	defer os.Remove("mock_firmware_*.bin")
-	
+
 	parser := NewParser(reader, logger)
-	
+
 	err := parser.Parse()
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	
+
 	// Verify that ITOC was found at alternate location
 	if parser.itocAddr != 0x18000 {
 		t.Errorf("ITOC address = 0x%x, want 0x18000 (encrypted firmware alternate location)", parser.itocAddr)
 	}
-	
+
 	// Verify IMAGE_INFO section was added
 	sections := parser.GetSections()
 	imageInfoSections := sections[types.SectionTypeImageInfo]
@@ -466,7 +466,7 @@ func TestParser_ParseEncryptedFirmware(t *testing.T) {
 
 func TestParser_SpecificFileSizes(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
 		name         string
 		fileSize     uint32
@@ -488,37 +488,37 @@ func TestParser_SpecificFileSizes(t *testing.T) {
 			expectedDTOC: 0xff000, // fileSize - 0x1000
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create firmware of specific size
 			var buf bytes.Buffer
-			
+
 			// Add magic at 0x1000
 			buf.Write(make([]byte, 0x1000))
 			binary.Write(&buf, binary.BigEndian, types.MagicPattern)
 			buf.Write(make([]byte, 0x10))
-			
+
 			// Add minimal HW pointers
 			hwPtrs := make([]byte, 128)
 			buf.Write(hwPtrs)
-			
+
 			// Pad to target size
 			currentSize := buf.Len()
 			if currentSize < int(tt.fileSize) {
 				buf.Write(make([]byte, int(tt.fileSize)-currentSize))
 			}
-			
+
 			reader := newMockFirmwareReader(buf.Bytes())
 			defer reader.Close()
 			defer os.Remove("mock_firmware_*.bin")
-			
+
 			parser := NewParser(reader, logger)
 			err := parser.parseHWPointers()
 			if err != nil {
 				t.Fatalf("parseHWPointers() error = %v", err)
 			}
-			
+
 			if parser.dtocAddr != tt.expectedDTOC {
 				t.Errorf("DTOC address = 0x%x, want 0x%x", parser.dtocAddr, tt.expectedDTOC)
 			}
@@ -529,17 +529,17 @@ func TestParser_SpecificFileSizes(t *testing.T) {
 func BenchmarkParser_Parse(b *testing.B) {
 	logger := zaptest.NewLogger(&testing.T{})
 	mockData := createMockFS4Firmware()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		reader := newMockFirmwareReader(mockData)
 		parser := NewParser(reader, logger)
-		
+
 		err := parser.Parse()
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		reader.Close()
 		os.Remove("mock_firmware_*.bin")
 	}

@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-// Type aliases to use annotated versions directly
-type ImageInfo = ImageInfoAnnotated
-type ImageInfoBinary = ImageInfoAnnotated
-
 // Preserved methods from original ImageInfo
 
 func (i *ImageInfo) IsMCCEnabled() bool {
@@ -125,37 +121,37 @@ func (i *ImageInfo) GetSecurityMode() uint32 {
 // GetSecurityAndVersion reconstructs the SecurityAndVersion field from individual bitfields
 func (i *ImageInfo) GetSecurityAndVersion() uint32 {
 	var result uint32
-	result |= uint32(i.MinorVersion) & 0xFF           // Bits 0-7
-	result |= (uint32(i.SecurityMode) & 0xFF) << 8    // Bits 8-15 (includes MCCEnabled)
-	result |= (uint32(i.MajorVersion) & 0xFF) << 16   // Bits 16-23
-	result |= (uint32(i.Reserved0) & 0xFF) << 24      // Bits 24-31
-	
+	result |= uint32(i.MinorVersion) & 0xFF         // Bits 0-7
+	result |= (uint32(i.SecurityMode) & 0xFF) << 8  // Bits 8-15 (includes MCCEnabled)
+	result |= (uint32(i.MajorVersion) & 0xFF) << 16 // Bits 16-23
+	result |= (uint32(i.Reserved0) & 0xFF) << 24    // Bits 24-31
+
 	// Individual flags are already included in SecurityMode (bits 8-15)
 	// bit 8: MCCEnabled, bit 13: DebugFW, bit 14: SignedFW, bit 15: SecureFW
-	
+
 	return result
 }
 
 // SecurityAttribute constants
 const (
-	SecurityAttributeNone         = 0x0
-	SecurityAttributeEncrypted    = 0x1
-	SecurityAttributeSigned       = 0x2
-	SecurityAttributeCsCrypto     = 0x4
+	SecurityAttributeNone          = 0x0
+	SecurityAttributeEncrypted     = 0x1
+	SecurityAttributeSigned        = 0x2
+	SecurityAttributeCsCrypto      = 0x4
 	SecurityAttributeCsDevelopment = 0x8
-	SecurityAttributeDebugFW      = 0x10
+	SecurityAttributeDebugFW       = 0x10
 )
 
 // GetSecurityAttributesString returns a string describing security attributes
 func (i *ImageInfo) GetSecurityAttributesString() string {
 	secMode := i.GetSecurityMode()
-	
+
 	if secMode == SecurityAttributeNone {
 		return "None"
 	}
-	
+
 	var attrs []string
-	
+
 	if secMode&SecurityAttributeEncrypted != 0 {
 		attrs = append(attrs, "Encrypted")
 	}
@@ -171,16 +167,15 @@ func (i *ImageInfo) GetSecurityAttributesString() string {
 	if secMode&SecurityAttributeDebugFW != 0 {
 		attrs = append(attrs, "DEBUG_FW")
 	}
-	
+
 	return strings.Join(attrs, ", ")
 }
 
 // GetPartNumberString returns the part number as a string
 func (i *ImageInfo) GetPartNumberString() string {
-	// In ImageInfoAnnotated, the part number is in the Name field
+	// In ImageInfo, the part number is in the Name field
 	if i.Name != [64]byte{} {
 		return nullTerminatedString(i.Name[:])
 	}
 	return ""
 }
-

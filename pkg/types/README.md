@@ -39,12 +39,15 @@ All structures are designed to match the binary layout from mstflint, with Big E
 - Hardware CRC with special table and first 2 bytes inverted
 - Three CRC modes: INITOCENTRY, NOCRC, INSECTION
 
-## Usage with binstruct
+## Usage with annotations
 
-All structures use `github.com/ghostiam/binstruct` tags:
-- `bin:"BE"` for big-endian fields
-- `bin:"offset=X"` for specific offsets
-- `bin:""` for byte arrays without endianness conversion
+Structures are parsed via `pkg/annotations` using `offset:"..."` tags:
+- `offset:"byte:N"` for explicit byte offsets within the structure
+- `offset:"bit:P,len:L,endian:be|le"` for bitfields (absolute bit positions)
+- `offset:"...,endian:be|le"` to specify endianness for multi-byte fields
+- `offset:"...,hex_as_dec:true"` for BCD-encoded fields (e.g., years, timestamps)
+
+Types provide `Unmarshal([]byte) error` and `Marshal() ([]byte, error)` for binary round-tripping; prefer these over ad-hoc byte slicing implemented in business logic.
 
 ## Section Types
 

@@ -2,7 +2,7 @@ package parser
 
 import (
 	"fmt"
-	
+
 	"github.com/Civil/mlx5fw-go/pkg/interfaces"
 	"github.com/Civil/mlx5fw-go/pkg/types"
 	"github.com/ansel1/merry/v2"
@@ -11,7 +11,7 @@ import (
 
 // TOCReader provides generic TOC reading functionality
 type TOCReader struct {
-	logger *zap.Logger
+	logger         *zap.Logger
 	sectionFactory interfaces.SectionFactory
 }
 
@@ -23,19 +23,19 @@ func NewTOCReader(logger *zap.Logger) *TOCReader {
 // NewTOCReaderWithFactory creates a new TOC reader with a section factory
 func NewTOCReaderWithFactory(logger *zap.Logger, factory interfaces.SectionFactory) *TOCReader {
 	return &TOCReader{
-		logger: logger,
+		logger:         logger,
 		sectionFactory: factory,
 	}
 }
 
 // ReadTOCHeader reads and validates a TOC header
-func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*types.ITOCHeaderAnnotated, error) {
+func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*types.ITOCHeader, error) {
 	if tocAddr+32 > uint32(len(data)) {
 		return nil, merry.New("TOC header out of bounds")
 	}
 
 	// Use annotated version for unmarshaling
-	header := &types.ITOCHeaderAnnotated{}
+	header := &types.ITOCHeader{}
 	headerData := data[tocAddr : tocAddr+32]
 	if err := header.Unmarshal(headerData); err != nil {
 		return nil, merry.Wrap(err)
@@ -54,8 +54,8 @@ func (r *TOCReader) ReadTOCHeader(data []byte, tocAddr uint32, isDTOC bool) (*ty
 }
 
 // ReadTOCEntries reads all TOC entries until end marker
-func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEntryAnnotated, error) {
-	var entries []*types.ITOCEntryAnnotated
+func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEntry, error) {
+	var entries []*types.ITOCEntry
 	entriesOffset := tocAddr + 32 // After header
 
 	for i := 0; ; i++ {
@@ -65,8 +65,8 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEn
 		}
 
 		// Use annotated version for unmarshaling
-		entry := &types.ITOCEntryAnnotated{}
-		entryData := data[entryOffset:entryOffset+32]
+		entry := &types.ITOCEntry{}
+		entryData := data[entryOffset : entryOffset+32]
 		if err := entry.Unmarshal(entryData); err != nil {
 			// Log error but continue reading other entries
 			r.logger.Warn("Failed to unmarshal ITOC entry",
@@ -74,8 +74,7 @@ func (r *TOCReader) ReadTOCEntries(data []byte, tocAddr uint32) ([]*types.ITOCEn
 				zap.Error(err))
 			continue
 		}
-		
-		
+
 		// Debug: Log CRC info for all section types
 		r.logger.Debug("ITOC entry CRC info",
 			zap.String("type", types.GetSectionTypeName(uint16(entry.Type))),
@@ -223,7 +222,7 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 				zap.Uint32("flash_addr", flashAddr),
 				zap.String("hex_addr", fmt.Sprintf("0x%x", flashAddr)))
 		}
-		
+
 		// Special handling for HASHES_TABLE sections (type 0xfa)
 		// HASHES_TABLE sections have dynamic size that needs to be calculated from the header
 		var sectionSize uint32 = entry.GetSize()
@@ -242,7 +241,7 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 				sectionSize = calculatedSize
 			}
 		}
-		
+
 		section, err := r.sectionFactory.CreateSection(
 			uint16(sectionType),
 			uint64(flashAddr),
@@ -276,7 +275,7 @@ func (r *TOCReader) ReadTOCSectionsNew(data []byte, tocAddr uint32, isDTOC bool)
 }
 
 // GetCRCType determines the CRC type from ITOC entry
-func (r *TOCReader) GetCRCType(entry *types.ITOCEntryAnnotated) types.CRCType {
+func (r *TOCReader) GetCRCType(entry *types.ITOCEntry) types.CRCType {
 	// Use the entry's GetCRCType method which extracts the CRC type
 	// from the 3-bit CRCField that was parsed by annotations
 	return entry.GetCRCType()
@@ -330,7 +329,7 @@ func (r *TOCReader) ReadTOCRawEntries(data []byte, tocAddr uint32, isDTOC bool) 
 		}
 
 		entry := &types.ITOCEntry{}
-		if err := entry.Unmarshal(data[entryOffset:entryOffset+32]); err != nil {
+		if err := entry.Unmarshal(data[entryOffset : entryOffset+32]); err != nil {
 			continue
 		}
 
@@ -347,23 +346,23 @@ func (r *TOCReader) calculateHashesTableSize(data []byte, flashAddr uint32) (uin
 	if flashAddr+12 > uint32(len(data)) {
 		return 0, merry.Errorf("HASHES_TABLE header out of bounds at 0x%x", flashAddr)
 	}
-	
+
 	// Read header data
 	headerData := data[flashAddr : flashAddr+12]
-	
+
 	// Parse header using FS4HashesTableHeader structure
 	header := &types.FS4HashesTableHeader{}
 	if err := header.Unmarshal(headerData); err != nil {
 		return 0, merry.Wrap(err)
 	}
-	
+
 	// Calculate size using mstflint formula: (4 + DwSize) * 4
 	calculatedSize := (4 + header.DwSize) * 4
-	
+
 	r.logger.Debug("HASHES_TABLE header parsed",
 		zap.Uint32("flash_addr", flashAddr),
 		zap.Uint32("dw_size", header.DwSize),
 		zap.Uint32("calculated_size", calculatedSize))
-	
+
 	return calculatedSize, nil
 }

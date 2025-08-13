@@ -22,17 +22,17 @@ func (b *FWByteSlice) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &hexStr); err != nil {
 		return err
 	}
-	
+
 	if hexStr == "" {
 		*b = nil
 		return nil
 	}
-	
+
 	decoded, err := hex.DecodeString(hexStr)
 	if err != nil {
 		return err
 	}
-	
+
 	*b = decoded
 	return nil
 }

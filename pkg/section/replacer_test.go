@@ -15,7 +15,7 @@ import (
 
 func TestDetermineFirmwareSizeLimit(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
 		name         string
 		firmwareSize int
@@ -49,7 +49,7 @@ func TestDetermineFirmwareSizeLimit(t *testing.T) {
 				firmwareData: make([]byte, tt.firmwareSize),
 				logger:       logger,
 			}
-			
+
 			limit := r.determineFirmwareSizeLimit()
 			assert.Equal(t, tt.expectedSize, limit)
 		})
@@ -67,17 +67,17 @@ func TestGetCRCType(t *testing.T) {
 		setupEntry  func(*types.ITOCEntry)
 	}{
 		{
-			name: "no CRC flag set",
-			entry: &types.ITOCEntry{},
+			name:        "no CRC flag set",
+			entry:       &types.ITOCEntry{},
 			expectedCRC: types.CRCNone,
 			setupEntry: func(e *types.ITOCEntry) {
-				// Set CRC field to 1 (NOCRC) 
+				// Set CRC field to 1 (NOCRC)
 				e.CRCField = 0x01
 			},
 		},
 		{
-			name: "CRC in ITOC entry",
-			entry: &types.ITOCEntry{},
+			name:        "CRC in ITOC entry",
+			entry:       &types.ITOCEntry{},
 			expectedCRC: types.CRCInITOCEntry,
 			setupEntry: func(e *types.ITOCEntry) {
 				// Set SectionCRC to non-zero value
@@ -85,8 +85,8 @@ func TestGetCRCType(t *testing.T) {
 			},
 		},
 		{
-			name: "CRC in section",
-			entry: &types.ITOCEntry{},
+			name:        "CRC in section",
+			entry:       &types.ITOCEntry{},
 			expectedCRC: types.CRCInSection,
 			setupEntry: func(e *types.ITOCEntry) {
 				// CRC in section is determined by having neither no_crc flag nor section CRC
@@ -100,7 +100,7 @@ func TestGetCRCType(t *testing.T) {
 			if tt.setupEntry != nil {
 				tt.setupEntry(tt.entry)
 			}
-			
+
 			// Use GetCRCTypeLegacy for ITOCEntry
 			crcType := tocReader.GetCRCTypeLegacy(tt.entry)
 			assert.Equal(t, tt.expectedCRC, crcType)
@@ -112,7 +112,7 @@ func TestGetCRCType(t *testing.T) {
 
 func TestFindMagicPattern(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
 		name           string
 		setupData      func() []byte
@@ -152,7 +152,7 @@ func TestFindMagicPattern(t *testing.T) {
 				firmwareData: tt.setupData(),
 				logger:       logger,
 			}
-			
+
 			offset, err := r.findMagicPattern(r.firmwareData)
 			if tt.expectError {
 				assert.Error(t, err)
@@ -197,7 +197,7 @@ func TestWriteHWPointers(t *testing.T) {
 
 func TestUpdateSectionCRC(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
 		name        string
 		section     interfaces.SectionInterface
@@ -210,8 +210,8 @@ func TestUpdateSectionCRC(t *testing.T) {
 			section: sections.NewGenericSection(
 				interfaces.NewBaseSection(
 					types.SectionTypeDbgFWINI,
-					0,     // offset
-					100,   // size
+					0,   // offset
+					100, // size
 					types.CRCNone,
 					0,     // crc
 					false, // isEncrypted
@@ -228,8 +228,8 @@ func TestUpdateSectionCRC(t *testing.T) {
 			section: sections.NewITOCSection(
 				interfaces.NewBaseSection(
 					types.SectionTypeItoc,
-					0,     // offset
-					100,   // size
+					0,   // offset
+					100, // size
 					types.CRCInITOCEntry,
 					0,     // crc
 					false, // isEncrypted
@@ -246,8 +246,8 @@ func TestUpdateSectionCRC(t *testing.T) {
 			section: sections.NewGenericSection(
 				interfaces.NewBaseSection(
 					types.SectionTypeDbgFWINI,
-					0,     // offset
-					100,   // size
+					0,   // offset
+					100, // size
 					types.CRCInSection,
 					0,     // crc
 					false, // isEncrypted
@@ -271,8 +271,8 @@ func TestUpdateSectionCRC(t *testing.T) {
 			section: sections.NewGenericSection(
 				interfaces.NewBaseSection(
 					types.SectionTypeDbgFWINI,
-					0,     // offset
-					2,     // size
+					0, // offset
+					2, // size
 					types.CRCInSection,
 					0,     // crc
 					false, // isEncrypted
@@ -292,13 +292,13 @@ func TestUpdateSectionCRC(t *testing.T) {
 			r := &Replacer{
 				logger: logger,
 			}
-			
+
 			err := r.updateSectionCRC(tt.workingData, tt.section, tt.newSize)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				
+
 				// For CRC in section, verify CRC was written
 				if tt.section.CRCType() == types.CRCInSection {
 					lastDwordOffset := tt.section.Offset() + uint64(tt.newSize) - 4
@@ -316,15 +316,15 @@ func TestSerializeITOCEntry(t *testing.T) {
 	r := &Replacer{logger: logger}
 
 	entry := &types.ITOCEntry{
-		Type:       uint8(types.SectionTypeDbgFWINI),
-		SizeDwords: 0x400, // 0x1000 bytes / 4 = 0x400 dwords
-		Param0Low:  0x5,
-		Param0High: 0x1234,
-		Param1:     0xABCDEF00,
+		Type:            uint8(types.SectionTypeDbgFWINI),
+		SizeDwords:      0x400, // 0x1000 bytes / 4 = 0x400 dwords
+		Param0Low:       0x5,
+		Param0High:      0x1234,
+		Param1:          0xABCDEF00,
 		FlashAddrDwords: 0x100000, // Already in bytes despite field name
-		Encrypted:  true,
-		CRCField:   7,
-		SectionCRC: 0x5678,
+		Encrypted:       true,
+		CRCField:        7,
+		SectionCRC:      0x5678,
 	}
 
 	data := make([]byte, 32)
@@ -334,31 +334,31 @@ func TestSerializeITOCEntry(t *testing.T) {
 	// Verify key fields were serialized correctly
 	// Type should be in bits 0-7
 	assert.Equal(t, uint8(types.SectionTypeDbgFWINI), data[0])
-	
+
 	// Size in dwords should be in bits 8-29
-	// Read bits 8-29 
+	// Read bits 8-29
 	sizeFromData := (uint32(data[1])<<14 | uint32(data[2])<<6 | uint32(data[3])>>2) & 0x3FFFFF
 	assert.Equal(t, uint32(0x400), sizeFromData)
-	
+
 	// Param1 should be at bytes 8-11
 	assert.Equal(t, entry.Param1, binary.BigEndian.Uint32(data[8:12]))
 }
 
 func TestRelocateSections(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	// Create test data with sections
 	workingData := make([]byte, 1024)
-	
+
 	// Fill sections with identifiable data
 	section1Data := []byte("SECTION1")
 	section2Data := []byte("SECTION2")
 	section3Data := []byte("SECTION3")
-	
+
 	copy(workingData[100:], section1Data)
 	copy(workingData[200:], section2Data)
 	copy(workingData[300:], section3Data)
-	
+
 	relocMap := map[uint32]*relocationInfo{
 		200: {
 			newOffset: 250, // Move forward by 50
@@ -369,14 +369,14 @@ func TestRelocateSections(t *testing.T) {
 			size:      uint32(len(section3Data)),
 		},
 	}
-	
+
 	r := &Replacer{
 		logger: logger,
 	}
-	
+
 	err := r.relocateSections(workingData, relocMap, 150, 50)
 	require.NoError(t, err)
-	
+
 	// Verify sections were moved
 	assert.Equal(t, section1Data, workingData[100:100+len(section1Data)])
 	assert.Equal(t, section2Data, workingData[250:250+len(section2Data)])
@@ -385,13 +385,13 @@ func TestRelocateSections(t *testing.T) {
 
 func TestUpdateHWPointers(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	// Create test firmware data with magic pattern and HW pointers
 	workingData := make([]byte, 0x1000)
-	
+
 	// Write magic pattern at offset 0
 	binary.BigEndian.PutUint64(workingData[0:8], types.MagicPattern)
-	
+
 	// Create HW pointers at offset 0x18
 	hwPointersOffset := uint32(0x18)
 	hw := &types.FS4HWPointers{
@@ -404,15 +404,15 @@ func TestUpdateHWPointers(t *testing.T) {
 			CRC: 0x5678,
 		},
 	}
-	
+
 	r := &Replacer{
 		firmwareData: workingData,
 		logger:       logger,
 	}
-	
+
 	// Write initial HW pointers
 	r.writeHWPointers(workingData[hwPointersOffset:], hw)
-	
+
 	// Create relocation map
 	relocMap := map[uint32]*relocationInfo{
 		0x100: {
@@ -424,29 +424,29 @@ func TestUpdateHWPointers(t *testing.T) {
 			size:      200,
 		},
 	}
-	
+
 	err := r.updateHWPointers(workingData, relocMap)
 	require.NoError(t, err)
-	
+
 	// Read back HW pointers
 	hwData := workingData[hwPointersOffset : hwPointersOffset+128]
-	
+
 	// Manually parse the updated pointers
 	boot2Ptr := binary.BigEndian.Uint32(hwData[8:12])
 	tocPtr := binary.BigEndian.Uint32(hwData[16:20])
-	
+
 	assert.Equal(t, uint32(0x150), boot2Ptr)
 	assert.Equal(t, uint32(0x250), tocPtr)
 }
 
 func TestPadFirmware(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
-		name           string
-		inputSize      int
-		expectedSize   int
-		expectedFill   byte
+		name         string
+		inputSize    int
+		expectedSize int
+		expectedFill byte
 	}{
 		{
 			name:         "small firmware padded to 32MB",
@@ -473,7 +473,7 @@ func TestPadFirmware(t *testing.T) {
 			expectedFill: 0xFF,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create input data with pattern
@@ -481,17 +481,17 @@ func TestPadFirmware(t *testing.T) {
 			for i := range inputData {
 				inputData[i] = byte(i & 0xFF)
 			}
-			
+
 			r := &Replacer{
 				firmwareData: inputData,
 				logger:       logger,
 			}
-			
+
 			result := r.padFirmware(inputData)
-			
+
 			// Check size
 			assert.Equal(t, tt.expectedSize, len(result))
-			
+
 			// Check original data preserved
 			preservedSize := tt.inputSize
 			if preservedSize > tt.expectedSize {
@@ -500,7 +500,7 @@ func TestPadFirmware(t *testing.T) {
 			for i := 0; i < preservedSize; i++ {
 				assert.Equal(t, byte(i&0xFF), result[i], "Original data should be preserved at index %d", i)
 			}
-			
+
 			// Check padding
 			if tt.inputSize < tt.expectedSize {
 				for i := tt.inputSize; i < tt.expectedSize; i++ {

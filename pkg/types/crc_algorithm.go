@@ -25,7 +25,6 @@ func GetSectionCRCAlgorithm(sectionType uint16) CRCAlgorithm {
 	}
 }
 
-
 // String returns the string representation of the CRC algorithm
 func (c CRCAlgorithm) String() string {
 	switch c {

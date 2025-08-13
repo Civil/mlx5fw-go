@@ -86,19 +86,17 @@ func TestITOCHeader_Unmarshal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use annotated version for testing
-			headerAnnotated := &ITOCHeaderAnnotated{}
-			err := headerAnnotated.Unmarshal(tt.data)
-			
+			// Use canonical type for testing
+			header := &ITOCHeader{}
+			err := header.Unmarshal(tt.data)
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if err == nil {
-				// Convert to legacy format for comparison
-				header := headerAnnotated.FromAnnotated()
-				
+
 				if header.Signature0 != tt.wantSignature {
 					t.Errorf("Signature0 = 0x%08X, want 0x%08X", header.Signature0, tt.wantSignature)
 				}
@@ -114,7 +112,7 @@ func TestITOCHeader_Size(t *testing.T) {
 	// Verify the structure is exactly 32 bytes
 	header := ITOCHeader{}
 	size := binary.Size(header)
-	
+
 	expectedSize := 32
 	if size != expectedSize {
 		t.Errorf("ITOCHeader size = %d bytes, want %d bytes", size, expectedSize)
@@ -145,7 +143,7 @@ func TestITOCHeader_SignatureConstants(t *testing.T) {
 			// Convert signature to bytes and check ASCII
 			bytes := make([]byte, 4)
 			binary.BigEndian.PutUint32(bytes, tt.signature)
-			
+
 			got := string(bytes)
 			if got != tt.expected {
 				t.Errorf("Signature as string = %q, want %q", got, tt.expected)
@@ -179,14 +177,12 @@ func TestITOCHeader_Marshal(t *testing.T) {
 		t.Errorf("Marshaled size = %d, want 32", buf.Len())
 	}
 
-	// Unmarshal back and verify using annotated version
-	header2Annotated := &ITOCHeaderAnnotated{}
-	err = header2Annotated.Unmarshal(buf.Bytes())
+	// Unmarshal back and verify using canonical type
+	header2 := &ITOCHeader{}
+	err = header2.Unmarshal(buf.Bytes())
 	if err != nil {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
-	
-	header2 := header2Annotated.FromAnnotated()
 
 	if header2.Signature0 != header.Signature0 {
 		t.Errorf("Signature0 = 0x%08X, want 0x%08X", header2.Signature0, header.Signature0)
@@ -239,20 +235,20 @@ func TestITOCHeader_RealWorldData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use annotated version for testing
-			headerAnnotated := &ITOCHeaderAnnotated{}
-			err := headerAnnotated.Unmarshal(tt.data)
+			// Use canonical type for testing
+			header := &ITOCHeader{}
+			err := header.Unmarshal(tt.data)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
-			
+
 			// Convert to legacy format for logging
-			header := headerAnnotated.FromAnnotated()
+			// compare
 
 			// Log the parsed header
 			t.Logf("%s: Sig0=0x%08X, CRC=0x%08X, Version=%d",
 				tt.description, header.Signature0, header.CRC, header.Version)
-			
+
 			// Basic sanity check
 			if header.Signature0 != ITOCSignature && header.Signature0 != DTOCSignature {
 				t.Logf("Warning: Unexpected signature 0x%08X", header.Signature0)
@@ -267,21 +263,21 @@ func BenchmarkITOCHeader_Unmarshal(b *testing.B) {
 	binary.BigEndian.PutUint32(data[0:4], ITOCSignature)
 	binary.BigEndian.PutUint32(data[16:20], 2)      // Version
 	binary.BigEndian.PutUint32(data[28:32], 0x1234) // CRC
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		headerAnnotated := &ITOCHeaderAnnotated{}
-		_ = headerAnnotated.Unmarshal(data)
+		header := &ITOCHeader{}
+		_ = header.Unmarshal(data)
 	}
 }
 
 func TestITOCHeader_Validation(t *testing.T) {
 	// Test header validation scenarios
 	tests := []struct {
-		name     string
-		header   ITOCHeader
-		isValid  bool
-		tocType  string
+		name    string
+		header  ITOCHeader
+		isValid bool
+		tocType string
 	}{
 		{
 			name: "Valid ITOC",
@@ -337,7 +333,7 @@ func TestITOCHeader_Validation(t *testing.T) {
 			default:
 				tocType = "UNKNOWN"
 			}
-			
+
 			if tocType != tt.tocType {
 				t.Errorf("TOC type = %v, want %v", tocType, tt.tocType)
 			}

@@ -22,12 +22,12 @@ type Parser struct {
 	sectionFactory interfaces.SectionFactory
 
 	// Parsed data
-	magicOffset    uint32
-	hwPointers     *types.FS4HWPointersAnnotated
-	itocHeader     *types.ITOCHeaderAnnotated
-	dtocHeader     *types.ITOCHeaderAnnotated
-	sections map[uint16][]interfaces.CompleteSectionInterface
-	metadata *types.FirmwareMetadata
+	magicOffset uint32
+	hwPointers  *types.FS4HWPointers
+	itocHeader  *types.ITOCHeader
+	dtocHeader  *types.ITOCHeader
+	sections    map[uint16][]interfaces.CompleteSectionInterface
+	metadata    *types.FirmwareMetadata
 
 	// Addresses
 	boot2Addr uint32
@@ -40,7 +40,7 @@ type Parser struct {
 	// Validation status
 	itocHeaderValid bool
 	dtocHeaderValid bool
-	
+
 	// Format type
 	format types.FirmwareFormat
 }
@@ -54,7 +54,7 @@ func NewParser(reader *parser.FirmwareReader, logger *zap.Logger) *Parser {
 		tocReader:       parser.NewTOCReaderWithFactory(logger, sections.NewDefaultSectionFactory()),
 		sectionFactory:  sections.NewDefaultSectionFactory(),
 		sections:        make(map[uint16][]interfaces.CompleteSectionInterface),
-		dtocHeaderValid: true, // Default to true since DTOC is optional
+		dtocHeaderValid: true,            // Default to true since DTOC is optional
 		format:          types.FormatFS4, // Default to FS4
 	}
 }
@@ -88,7 +88,7 @@ func (p *Parser) Parse() error {
 		// Try alternate location (standard + 0x1000) before assuming encryption
 		if err := p.tryAlternateITOCLocation(); err != nil {
 			// If both locations fail, then it might be encrypted
-			p.logger.Info("No valid ITOC found at standard or alternate locations, checking for encrypted firmware")
+			p.logger.Debug("No valid ITOC found at standard or alternate locations, checking for encrypted firmware")
 			p.isEncrypted = true
 			// Try parsing as encrypted firmware
 			if err := p.parseEncryptedFirmware(); err != nil {
@@ -142,11 +142,11 @@ func (p *Parser) parseHWPointers() error {
 	}
 
 	// Parse using annotation-based unmarshaling
-	p.hwPointers = &types.FS4HWPointersAnnotated{}
+	p.hwPointers = &types.FS4HWPointers{}
 	if err := p.hwPointers.Unmarshal(hwData); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	// Debug log HW pointers
 	p.logger.Debug("Parsed HW pointer values",
 		zap.Uint32("hashes_table_ptr", p.hwPointers.HashesTablePtr.Ptr),
@@ -247,7 +247,7 @@ func (p *Parser) parseITOC() error {
 
 	// Verify ITOC header CRC
 	if err := VerifyITOCHeaderCRC(headerData, p.crc); err != nil {
-		p.logger.Warn("ITOC header CRC verification failed", zap.Error(err))
+		p.logger.Debug("ITOC header CRC verification failed", zap.Error(err))
 		p.itocHeaderValid = false
 		// Don't fail parsing - some firmware might have invalid CRC
 		// This matches mstflint behavior with ignoreCrcCheck option
@@ -271,7 +271,7 @@ func (p *Parser) parseITOC() error {
 	}
 
 	// Parse the header for storage using annotation-based unmarshaling
-	p.itocHeader = &types.ITOCHeaderAnnotated{}
+	p.itocHeader = &types.ITOCHeader{}
 	if err := p.itocHeader.Unmarshal(headerData); err != nil {
 		return merry.Wrap(err)
 	}
@@ -333,7 +333,7 @@ func (p *Parser) parseDTOC() error {
 	}
 
 	// Parse the header for storage using annotation-based unmarshaling
-	p.dtocHeader = &types.ITOCHeaderAnnotated{}
+	p.dtocHeader = &types.ITOCHeader{}
 	if err := p.dtocHeader.Unmarshal(headerData); err != nil {
 		return merry.Wrap(err)
 	}
@@ -359,22 +359,22 @@ func (p *Parser) buildMetadata() {
 		Format:     types.FormatFS4,
 		ImageStart: p.magicOffset,
 	}
-	
+
 	// Set HW pointers if available
 	if p.hwPointers != nil {
 		metadata.HWPointers = p.hwPointers
 	}
-	
+
 	// Set ITOC header if available
 	if p.itocHeader != nil {
 		metadata.ITOCHeader = p.itocHeader
 	}
-	
+
 	// Set DTOC header if available
 	if p.dtocHeader != nil {
 		metadata.DTOCHeader = p.dtocHeader
 	}
-	
+
 	p.metadata = metadata
 }
 
@@ -396,7 +396,7 @@ func (p *Parser) SetFormat(format types.FirmwareFormat) {
 // addSection adds a section to both legacy and new maps
 func (p *Parser) addSection(section interfaces.CompleteSectionInterface) {
 	sectionType := section.Type()
-	
+
 	// Debug logging for HASHES_TABLE sections
 	if sectionType == types.SectionTypeHashesTable {
 		p.logger.Info("Adding HASHES_TABLE section",
@@ -407,10 +407,9 @@ func (p *Parser) addSection(section interfaces.CompleteSectionInterface) {
 			zap.Bool("from_hw_pointer", section.IsFromHWPointer()),
 			zap.String("crc_type", section.CRCType().String()))
 	}
-	
+
 	p.sections[sectionType] = append(p.sections[sectionType], section)
 }
-
 
 // GetDTOCAddress returns the DTOC address
 func (p *Parser) GetDTOCAddress() uint32 {
@@ -581,20 +580,20 @@ func (p *Parser) parseToolsArea() error {
 
 		// Standard TOOLS_AREA size
 		toolsAreaSize := uint32(types.ToolsAreaSize)
-		
+
 		// Read the TOOLS_AREA data (always 64 bytes)
 		// CRC is embedded within the structure at offset 62-63
 		toolsData, err := p.reader.ReadSection(int64(toolsAreaAddr), toolsAreaSize)
 		if err != nil {
 			return merry.Wrap(err)
 		}
-		
+
 		section, err := p.sectionFactory.CreateSectionFromData(
 			types.SectionTypeToolsArea,
 			uint64(toolsAreaAddr),
 			toolsAreaSize,
 			types.CRCInSection,
-			0, // CRC will be calculated from data
+			0,     // CRC will be calculated from data
 			false, // isEncrypted
 			false, // isDeviceData
 			nil,   // entry
@@ -648,7 +647,7 @@ func (p *Parser) parseBoot2() error {
 		// For non-encrypted firmwares, read extra 4 bytes for CRC
 		readSize += 4
 	}
-	
+
 	boot2Data, err := p.reader.ReadSection(int64(p.boot2Addr), readSize)
 	if err != nil {
 		return merry.Wrap(err)
@@ -659,7 +658,7 @@ func (p *Parser) parseBoot2() error {
 		uint64(p.boot2Addr),
 		boot2SizeBytes,
 		types.CRCInSection,
-		0, // CRC will be calculated from data
+		0,     // CRC will be calculated from data
 		false, // isEncrypted
 		false, // isDeviceData
 		nil,   // entry
@@ -708,13 +707,13 @@ func (p *Parser) isSignedFirmware() bool {
 // parseHashesTable parses the HASHES_TABLE section if present
 func (p *Parser) parseHashesTable() error {
 	p.logger.Debug("parseHashesTable called")
-	
+
 	// Check if hwPointers is nil
 	if p.hwPointers == nil {
 		p.logger.Debug("hwPointers is nil")
 		return merry.New("hwPointers not initialized")
 	}
-	
+
 	// Check if HASHES_TABLE pointer is valid
 	if p.hwPointers.HashesTablePtr.Ptr == 0 || p.hwPointers.HashesTablePtr.Ptr == 0xffffffff {
 		p.logger.Debug("No valid HASHES_TABLE pointer",
@@ -743,23 +742,23 @@ func (p *Parser) parseHashesTable() error {
 	// Read HASHES_TABLE header to determine size
 	// According to mstflint, HASHES_TABLE size is dynamic and stored in the header
 	// Size formula: (4 + DwSize) * 4
-	
+
 	// Read the header using annotated structure
 	headerData, err := p.reader.ReadSection(int64(hashesTableAddr), 12) // FS4HashesTableHeader is 12 bytes
 	if err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	// Parse header using annotated structure
 	header := &types.FS4HashesTableHeader{}
 	if err := header.Unmarshal(headerData); err != nil {
 		return merry.Wrap(err)
 	}
-	
+
 	// Calculate size based on DwSize field
 	// Per mstflint: size = (4 + DwSize) * 4
 	hashesTableSize := (4 + header.DwSize) * 4
-	
+
 	p.logger.Debug("HASHES_TABLE size from header",
 		zap.Uint32("dw_size", header.DwSize),
 		zap.Uint32("calculated_size", hashesTableSize))
@@ -770,11 +769,11 @@ func (p *Parser) parseHashesTable() error {
 		uint64(hashesTableAddr),
 		hashesTableSize,
 		types.CRCInSection, // HASHES_TABLE usually has CRC at end
-		0, // CRC
-		false, // isEncrypted
-		false, // isDeviceData
-		nil,   // entry
-		true,  // isFromHWPointer - HASHES_TABLE is discovered from HW pointers
+		0,                  // CRC
+		false,              // isEncrypted
+		false,              // isDeviceData
+		nil,                // entry
+		true,               // isFromHWPointer - HASHES_TABLE is discovered from HW pointers
 	)
 	if err != nil {
 		return merry.Wrap(err)
@@ -806,7 +805,7 @@ func (p *Parser) tryAlternateITOCLocation() error {
 	}
 
 	// Parse header to check signature
-	tempHeader := &types.ITOCHeaderAnnotated{}
+	tempHeader := &types.ITOCHeader{}
 	if err := tempHeader.Unmarshal(headerData); err != nil {
 		return merry.Wrap(err)
 	}
@@ -829,7 +828,7 @@ func (p *Parser) tryAlternateITOCLocation() error {
 
 // parseEncryptedFirmware handles encrypted firmware
 func (p *Parser) parseEncryptedFirmware() error {
-	p.logger.Info("Parsing as encrypted firmware")
+	p.logger.Debug("Parsing as encrypted firmware")
 
 	// For encrypted firmware, we need to check if ITOC is at next sector after the original location
 	// This is based on mstflint's behavior: it checks _itoc_ptr and _itoc_ptr + FS4_DEFAULT_SECTOR_SIZE
@@ -848,7 +847,7 @@ func (p *Parser) parseEncryptedFirmware() error {
 	}
 
 	// Parse header using annotation-based unmarshaling
-	tempHeader := &types.ITOCHeaderAnnotated{}
+	tempHeader := &types.ITOCHeader{}
 	if err := tempHeader.Unmarshal(headerData); err != nil {
 		return merry.Wrap(err)
 	}
@@ -901,7 +900,7 @@ func (p *Parser) parseEncryptedFirmware() error {
 					zap.Uint8("crc_field", entry.GetCRC()),
 					zap.String("crc_type", p.tocReader.GetCRCTypeLegacy(entry).String()))
 			}
-			
+
 			// Create section using factory
 			section, err := p.sectionFactory.CreateSection(
 				entry.GetType(),
@@ -947,7 +946,7 @@ func (p *Parser) parseEncryptedFirmware() error {
 				uint64(imageInfoAddr),
 				types.ImageInfoSize, // Standard IMAGE_INFO size (1024 bytes)
 				types.CRCInSection,
-				0, // CRC
+				0,     // CRC
 				false, // isEncrypted
 				false, // isDeviceData
 				nil,   // entry
@@ -964,7 +963,7 @@ func (p *Parser) parseEncryptedFirmware() error {
 	}
 
 	// If we still don't have valid ITOC, this is truly encrypted and we can't parse it
-	p.logger.Warn("Unable to find valid ITOC, firmware appears to be fully encrypted")
+	p.logger.Debug("Unable to find valid ITOC, firmware appears to be fully encrypted")
 	// For fully encrypted firmware, we can still show some basic sections from HW pointers
 	return p.parseEncryptedFirmwareMinimal()
 }
@@ -981,7 +980,7 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 			uint64(imageInfoAddr),
 			types.ImageInfoSize, // Standard IMAGE_INFO size (1024 bytes)
 			types.CRCInSection,
-			0, // CRC
+			0,     // CRC
 			false, // isEncrypted
 			false, // isDeviceData
 			nil,   // entry
@@ -993,7 +992,7 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 			p.addSection(section)
 		}
 
-		p.logger.Info("Added IMAGE_INFO section from HW pointer",
+		p.logger.Debug("Added IMAGE_INFO section from HW pointer",
 			zap.Uint64("offset", section.Offset()),
 			zap.Uint32("size", section.Size()))
 	}
@@ -1011,7 +1010,7 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 					uint64(p.boot2Addr),
 					size,
 					types.CRCInSection,
-					0, // CRC
+					0,     // CRC
 					false, // isEncrypted
 					false, // isDeviceData
 					nil,   // entry
@@ -1068,25 +1067,25 @@ func (p *Parser) parseEncryptedFirmwareMinimal() error {
 		if err == nil {
 			// Check if it looks like valid tools area
 			toolsAreaSize := uint32(types.ToolsAreaSize) // Standard size
-			
+
 			// Read the TOOLS_AREA data including CRC
 			readSize := toolsAreaSize
 			if !p.isEncrypted {
 				// For non-encrypted firmwares, read extra 4 bytes for CRC
 				readSize += 4
 			}
-			
+
 			toolsData, err := p.reader.ReadSection(int64(toolsAreaAddr), readSize)
 			if err != nil {
 				return nil
 			}
-			
+
 			section, err := p.sectionFactory.CreateSectionFromData(
 				types.SectionTypeToolsArea,
 				uint64(toolsAreaAddr),
 				toolsAreaSize,
 				types.CRCInSection,
-				0, // CRC will be calculated from data
+				0,     // CRC will be calculated from data
 				false, // isEncrypted
 				false, // isDeviceData
 				nil,   // entry

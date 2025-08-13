@@ -5,7 +5,7 @@ import (
 )
 
 // CRCCalculator provides CRC calculation methods
-type CRCCalculator struct{
+type CRCCalculator struct {
 	crcType types.CRCType
 }
 
@@ -25,27 +25,27 @@ func (c *CRCCalculator) CalculateSoftwareCRC16(data []byte) uint16 {
 	paddedLen := (dataLen + 3) & ^3 // Round up to multiple of 4
 	paddedData := make([]byte, paddedLen)
 	copy(paddedData, data)
-	
+
 	crc := uint16(0xFFFF)
-	
+
 	// Process 32-bit words
 	for i := 0; i < paddedLen; i += 4 {
 		// Get 32-bit word in big-endian
-		word := uint32(paddedData[i])<<24 | uint32(paddedData[i+1])<<16 | 
+		word := uint32(paddedData[i])<<24 | uint32(paddedData[i+1])<<16 |
 			uint32(paddedData[i+2])<<8 | uint32(paddedData[i+3])
-		
+
 		// Process each bit of the 32-bit word (matches mstflint's Crc16::add)
 		for j := 0; j < 32; j++ {
-			if crc & 0x8000 != 0 {
-				crc = ((crc << 1) | uint16(word >> 31)) ^ types.CRCPolynomial
+			if crc&0x8000 != 0 {
+				crc = ((crc << 1) | uint16(word>>31)) ^ types.CRCPolynomial
 			} else {
-				crc = (crc << 1) | uint16(word >> 31)
+				crc = (crc << 1) | uint16(word>>31)
 			}
 			crc &= 0xFFFF
 			word <<= 1
 		}
 	}
-	
+
 	// Finish step - process 16 more bits of zeros
 	for i := 0; i < 16; i++ {
 		if crc&0x8000 != 0 {
@@ -55,7 +55,7 @@ func (c *CRCCalculator) CalculateSoftwareCRC16(data []byte) uint16 {
 		}
 		crc &= 0xFFFF
 	}
-	
+
 	// Final XOR
 	return crc ^ 0xFFFF
 }
@@ -66,22 +66,22 @@ func (c *CRCCalculator) CalculateHardwareCRC(data []byte) uint16 {
 	if len(data) < 2 {
 		return 0
 	}
-	
+
 	crc := uint16(0xFFFF)
 	for i := 0; i < len(data); i++ {
 		var d byte
 		if i > 1 {
 			d = data[i]
 		} else {
-			d = ^data[i]  // Invert first 2 bytes
+			d = ^data[i] // Invert first 2 bytes
 		}
 		tableIndex := (crc ^ uint16(d)) & 0xFF
 		crc = (crc >> 8) ^ types.CRC16Table2[tableIndex]
 	}
-	
+
 	// Swap bytes
 	crc = ((crc << 8) & 0xFF00) | ((crc >> 8) & 0xFF)
-	
+
 	return crc
 }
 
@@ -94,47 +94,47 @@ func (c *CRCCalculator) CalculateImageCRC(data []byte, sizeInDwords int) uint16 
 		// Based on mstflint investigation, CalcImageCRC(NULL, 0) returns 0x955 (2389)
 		return 0x955
 	}
-	
+
 	// Create a copy of data to avoid modifying the original
 	dataCopy := make([]byte, sizeInDwords*4)
 	copy(dataCopy, data)
-	
+
 	// Convert from big-endian to host-endian (mstflint uses TOCPUn)
 	for i := 0; i < sizeInDwords; i++ {
 		offset := i * 4
 		// Read big-endian dword
-		word := uint32(dataCopy[offset])<<24 | uint32(dataCopy[offset+1])<<16 | 
+		word := uint32(dataCopy[offset])<<24 | uint32(dataCopy[offset+1])<<16 |
 			uint32(dataCopy[offset+2])<<8 | uint32(dataCopy[offset+3])
-		
+
 		// Write back in host-endian (little-endian on x86)
 		dataCopy[offset] = byte(word)
 		dataCopy[offset+1] = byte(word >> 8)
 		dataCopy[offset+2] = byte(word >> 16)
 		dataCopy[offset+3] = byte(word >> 24)
 	}
-	
+
 	crc := uint16(0xFFFF)
-	
+
 	// Process each dword in host-endian format
 	for i := 0; i < sizeInDwords; i++ {
 		offset := i * 4
-		
+
 		// Get 32-bit word in host-endian (little-endian)
-		word := uint32(dataCopy[offset]) | uint32(dataCopy[offset+1])<<8 | 
+		word := uint32(dataCopy[offset]) | uint32(dataCopy[offset+1])<<8 |
 			uint32(dataCopy[offset+2])<<16 | uint32(dataCopy[offset+3])<<24
-		
+
 		// Process each bit of the 32-bit word (matches mstflint's Crc16::add)
 		for j := 0; j < 32; j++ {
-			if crc & 0x8000 != 0 {
-				crc = ((crc << 1) | uint16(word >> 31)) ^ types.CRCPolynomial
+			if crc&0x8000 != 0 {
+				crc = ((crc << 1) | uint16(word>>31)) ^ types.CRCPolynomial
 			} else {
-				crc = (crc << 1) | uint16(word >> 31)
+				crc = (crc << 1) | uint16(word>>31)
 			}
 			crc &= 0xFFFF
 			word <<= 1
 		}
 	}
-	
+
 	// Finish step - process 16 more bits of zeros
 	for i := 0; i < 16; i++ {
 		if crc&0x8000 != 0 {
@@ -144,7 +144,7 @@ func (c *CRCCalculator) CalculateImageCRC(data []byte, sizeInDwords int) uint16 
 		}
 		crc &= 0xFFFF
 	}
-	
+
 	// Final XOR
 	return crc ^ 0xFFFF
 }
@@ -152,13 +152,13 @@ func (c *CRCCalculator) CalculateImageCRC(data []byte, sizeInDwords int) uint16 
 // VerifyCRC verifies CRC for a data buffer
 func (c *CRCCalculator) VerifyCRC(data []byte, expectedCRC uint16, useHardwareCRC bool) bool {
 	var calculatedCRC uint16
-	
+
 	if useHardwareCRC {
 		calculatedCRC = c.CalculateHardwareCRC(data)
 	} else {
 		calculatedCRC = c.CalculateSoftwareCRC16(data)
 	}
-	
+
 	return calculatedCRC == expectedCRC
 }
 

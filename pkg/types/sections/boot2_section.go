@@ -10,12 +10,12 @@ import (
 // Boot2Section represents the BOOT2 section
 type Boot2Section struct {
 	*interfaces.BaseSection
-	
+
 	// BOOT2 specific fields
-	Magic      uint32 `json:"magic"`        // Offset 0x00
+	Magic      uint32 `json:"magic"`       // Offset 0x00
 	SizeDwords uint32 `json:"size_dwords"` // Offset 0x04 - size in dwords
 	Reserved   uint64 `json:"reserved"`    // Offset 0x08
-	
+
 	// The actual boot2 code data (without header and CRC)
 	CodeData []byte `json:"-"` // Binary code data - not parsed, requires raw data file
 }
@@ -33,21 +33,21 @@ func (s *Boot2Section) Parse(data []byte) error {
 	if len(data) < 16 {
 		return fmt.Errorf("boot2 data too small: %d bytes", len(data))
 	}
-	
+
 	// Parse header
 	s.Magic = binary.BigEndian.Uint32(data[0:4])
 	s.SizeDwords = binary.BigEndian.Uint32(data[4:8])
 	s.Reserved = binary.BigEndian.Uint64(data[8:16])
-	
+
 	// Store raw data for now (will be needed for CRC calculation)
 	s.SetRawData(data)
-	
+
 	// Calculate expected data size
 	expectedSize := (s.SizeDwords + 4) * 4
 	if uint32(len(data)) < expectedSize {
 		return fmt.Errorf("boot2 data size mismatch: got %d, expected %d", len(data), expectedSize)
 	}
-	
+
 	// Extract code data (between header and CRC)
 	// The CRC is at position (size + 3) dwords from start
 	crcOffset := (s.SizeDwords + 3) * 4
@@ -58,7 +58,7 @@ func (s *Boot2Section) Parse(data []byte) error {
 		// Extract code between header and CRC
 		s.CodeData = data[16:crcOffset]
 	}
-	
+
 	return nil
 }
 
@@ -70,6 +70,3 @@ func (s *Boot2Section) VerifyCRC() error {
 	// Otherwise fall back to base implementation
 	return s.BaseSection.VerifyCRC()
 }
-
-
-

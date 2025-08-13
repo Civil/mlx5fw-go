@@ -101,7 +101,7 @@ func TestBigEndian_PutUint32(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := make([]byte, 4)
 			binary.BigEndian.PutUint32(buf, tt.value)
-			
+
 			if !bytes.Equal(buf, tt.expected) {
 				t.Errorf("binary.BigEndian.PutUint32() = %v, want %v", buf, tt.expected)
 			}
@@ -136,7 +136,7 @@ func TestBigEndian_PutUint16(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := make([]byte, 2)
 			binary.BigEndian.PutUint16(buf, tt.value)
-			
+
 			if !bytes.Equal(buf, tt.expected) {
 				t.Errorf("binary.BigEndian.PutUint16() = %v, want %v", buf, tt.expected)
 			}
@@ -154,9 +154,9 @@ func TestBinaryWrite(t *testing.T) {
 
 	expected := []byte{
 		0x12, 0x34, 0x56, 0x78, // A
-		0xAB, 0xCD,             // B
-		0xEF,                   // C
-		0x01,                   // D
+		0xAB, 0xCD, // B
+		0xEF, // C
+		0x01, // D
 	}
 
 	s := TestStruct{
@@ -187,9 +187,9 @@ func TestBinaryRead(t *testing.T) {
 
 	input := []byte{
 		0x12, 0x34, 0x56, 0x78, // A
-		0xAB, 0xCD,             // B
-		0xEF,                   // C
-		0x01,                   // D
+		0xAB, 0xCD, // B
+		0xEF, // C
+		0x01, // D
 	}
 
 	var s TestStruct

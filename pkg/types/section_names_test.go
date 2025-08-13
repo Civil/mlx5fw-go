@@ -190,7 +190,7 @@ func TestSectionNameConsistency(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			itocName := GetSectionTypeName(tt.itocType)
 			dtocName := GetDTOCSectionTypeName(tt.dtocType)
-			
+
 			if itocName != tt.expectedName {
 				t.Errorf("ITOC name for %s: got %v, want %v", tt.name, itocName, tt.expectedName)
 			}
