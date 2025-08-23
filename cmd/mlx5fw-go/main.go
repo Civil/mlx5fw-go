@@ -67,8 +67,10 @@ Example usage:
 	rootCmd.PersistentFlags().StringVarP(&firmwarePath, "file", "f", "", "Firmware file path (when using file input)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().BoolVarP(&quietLogging, "quiet", "q", false, "Quiet mode: errors only")
-	rootCmd.PersistentFlags().StringVarP(&deviceBDF, "device", "d", "", "PCI device BDF (e.g., 0000:07:00.0)")
-	rootCmd.PersistentFlags().StringVar(&mstPath, "mst-path", "", "Direct MST device path (e.g., /dev/mst/0000:07:00.0_pciconf0)")
+	if DevSupported {
+		rootCmd.PersistentFlags().StringVarP(&deviceBDF, "device", "d", "", "PCI device BDF (e.g., 0000:07:00.0)")
+		rootCmd.PersistentFlags().StringVar(&mstPath, "mst-path", "", "Direct MST device path (e.g., /dev/mst/0000:07:00.0_pciconf0)")
+	}
 
 	// Setup verbose logging after flags are parsed
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -257,8 +259,10 @@ Examples:
 	rootCmd.AddCommand(CreateSectionReportCommand())
 
 	// Add debug subcommands (pciconf + access registers)
-	rootCmd.AddCommand(CreateDebugCommand())
-	rootCmd.AddCommand(createDebugARCommands())
+	if DevSupported {
+		rootCmd.AddCommand(CreateDebugCommand())
+		rootCmd.AddCommand(createDebugARCommands())
+	}
 
 	// Execute command
 	if err := rootCmd.Execute(); err != nil {

@@ -4,11 +4,11 @@
 package pcie
 
 import (
-    "encoding/binary"
-    "encoding/hex"
-    "fmt"
-    "os"
-    "time"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -85,187 +85,210 @@ func (c *ARClient) tryInitICMDCR() (*icmdInfo, error) {
 
 // sendICMD sends buffer via ICMD mailbox and reads back into the same buffer.
 func (c *ARClient) sendICMD(buf []byte) error {
-    // Optional path control for debugging/stability: MLX5FW_AR_PATH={vcr,cr}
-    // Default remains: try VCR, then CR fallback.
-    arPath := os.Getenv("MLX5FW_AR_PATH")
+	// Optional path control for debugging/stability: MLX5FW_AR_PATH={vcr,cr}
+	// Default remains: try VCR, then CR fallback.
+	arPath := os.Getenv("MLX5FW_AR_PATH")
 
-    // Readiness check (best-effort)
-    if err := c.icmdStaticCfgReady(); err != nil {
-        return err
-    }
+	// Readiness check (best-effort)
+	if err := c.icmdStaticCfgReady(); err != nil {
+		return err
+	}
 
-    // Build on-wire buffer: headers BE, payload raw
-    be := make([]byte, len(buf))
-    headerBytes := 16 + 4
-    fromBEHeader := func(dst, src []byte, hdr int) {
-        n := hdr / 4
-        for i := 0; i < n; i++ {
-            off := i * 4
-            v := uint32(src[off])<<24 | uint32(src[off+1])<<16 | uint32(src[off+2])<<8 | uint32(src[off+3])
-            binary.LittleEndian.PutUint32(dst[off:off+4], v)
-        }
-    }
-    copy(be, buf)
-    toBE(be[:headerBytes], buf[:headerBytes])
+	// Build on-wire buffer: headers BE, payload raw
+	be := make([]byte, len(buf))
+	headerBytes := 16 + 4
+	fromBEHeader := func(dst, src []byte, hdr int) {
+		n := hdr / 4
+		for i := 0; i < n; i++ {
+			off := i * 4
+			v := uint32(src[off])<<24 | uint32(src[off+1])<<16 | uint32(src[off+2])<<8 | uint32(src[off+3])
+			binary.LittleEndian.PutUint32(dst[off:off+4], v)
+		}
+	}
+	copy(be, buf)
+	toBE(be[:headerBytes], buf[:headerBytes])
 
-    if c.logger != nil {
-        op0le := binary.LittleEndian.Uint32(buf[0:4])
-        op1le := binary.LittleEndian.Uint32(buf[4:8])
-        regle := binary.LittleEndian.Uint32(buf[16:20])
-        dump := 64
-        if dump > len(be) {
-            dump = len(be)
-        }
-        c.logger.Debug("ar.tlv.header",
-            zap.Uint32("op_word0_le", op0le),
-            zap.Uint32("op_word1_le", op1le),
-            zap.Uint32("reg_hdr_le", regle),
-            zap.String("op_hdr_be_bytes", hex.EncodeToString(be[:16])),
-            zap.String("reg_hdr_be_bytes", hex.EncodeToString(be[16:20])),
-        )
-        c.logger.Debug("icmd.mailbox.pre_go", zap.String("bytes", hex.EncodeToString(be[:dump])))
-    }
+	if c.logger != nil {
+		op0le := binary.LittleEndian.Uint32(buf[0:4])
+		op1le := binary.LittleEndian.Uint32(buf[4:8])
+		regle := binary.LittleEndian.Uint32(buf[16:20])
+		dump := 64
+		if dump > len(be) {
+			dump = len(be)
+		}
+		c.logger.Info("ar.tlv.header",
+			zap.Uint32("op_word0_le", op0le),
+			zap.Uint32("op_word1_le", op1le),
+			zap.Uint32("reg_hdr_le", regle),
+			zap.String("op_hdr_be_bytes", hex.EncodeToString(be[:16])),
+			zap.String("reg_hdr_be_bytes", hex.EncodeToString(be[16:20])),
+		)
+		c.logger.Info("icmd.mailbox.pre_go", zap.String("bytes", hex.EncodeToString(be[:dump])))
+	}
 
-    // VCR attempt (unless forced CR)
-    if arPath != "cr" {
-        vcrCmdAddr := uint32(0x100000)
-        vcrCtrlAddr := uint32(0x0)
-        if c.logger != nil {
-            c.logger.Info("icmd.begin", zap.Int("size", len(be)), zap.String("ar_path", arPath), zap.Uint32("vcr_cmd_addr", vcrCmdAddr), zap.Uint32("vcr_ctrl_addr", vcrCtrlAddr))
-        }
-        if _, err := c.dev.Read32(0x3, vcrCtrlAddr); err == nil {
-            _ = icmdLockSemaphore(c.dev, 0x0)
-            defer icmdUnlockSemaphore(c.dev, 0x0)
-            if err := icmdWaitBusyClear(c.dev, vcrCtrlAddr, 3, 5*time.Second); err != nil {
-                return err
-            }
-            ctrlBefore, err := c.dev.Read32(0x3, vcrCtrlAddr)
-            if err != nil { return fmt.Errorf("icmd vcr read ctrl: %w", err) }
-            ctrlProg := (ctrlBefore &^ icmdOpcodeMask) | (uint32(icmdFlashRegAccess) << icmdOpcodeBitOff)
-            if err := c.dev.Write32(0x3, vcrCtrlAddr, ctrlProg); err != nil {
-                return fmt.Errorf("icmd vcr write ctrl (opcode): %w (before=0x%08x prog=0x%08x)", err, ctrlBefore, ctrlProg)
-            }
-            if c.logger != nil {
-                if chk, err := c.dev.Read32(0x3, vcrCtrlAddr); err == nil {
-            c.logger.Debug("icmd.vcr.ctrl.check_go", zap.Uint32("ctrl", chk))
-                }
-            }
-            if err := c.dev.WriteBlock(0x2, vcrCmdAddr, be); err != nil {
-                if err2 := c.dev.WriteBlock(0x3, vcrCmdAddr, be); err2 != nil {
-                    return fmt.Errorf("icmd write vcr mailbox: %w", err)
-                }
-            }
-            ctrl := ctrlProg | icmdBusyBitMask
-            if err := c.dev.Write32(0x3, vcrCtrlAddr, ctrl); err != nil {
-                return fmt.Errorf("icmd vcr write ctrl (go): %w (go=0x%08x)", err, ctrl)
-            }
-            if c.logger != nil {
-            c.logger.Debug("icmd.vcr.ctrl",
-                zap.Uint32("before", ctrlBefore),
-                zap.Uint32("prog", ctrlProg),
-                zap.Uint32("go", ctrl),
-                zap.Uint32("opcode", (ctrlProg>>icmdOpcodeBitOff)&0xffff),
-                zap.Uint32("exmb", (ctrlProg>>1)&1),
-                zap.Uint32("busy", ctrlProg&1),
-            )
-            }
-            if err := c.waitBusyClear(vcrCtrlAddr, 3, 5*time.Second); err == nil {
-                ctrlAfter, _ := c.dev.Read32(0x3, vcrCtrlAddr)
-                if c.logger != nil {
-                c.logger.Debug("icmd.vcr.ctrl.after",
-                    zap.Uint32("after", ctrlAfter),
-                    zap.Uint32("busy", ctrlAfter&1),
-                    zap.Uint32("exmb", (ctrlAfter>>1)&1),
-                    zap.Uint32("opcode", (ctrlAfter>>icmdOpcodeBitOff)&0xffff),
-                )
-            }
-                if ctrlAfter != ctrlBefore {
-                    // Read mailbox
-                    data, err := c.dev.ReadBlock(0x2, vcrCmdAddr, len(buf))
-                    if err != nil {
-                        if data2, err2 := c.dev.ReadBlock(0x3, vcrCmdAddr, len(buf)); err2 == nil { data = data2 } else { return fmt.Errorf("icmd vcr read mailbox: %w", err) }
-                    }
-                    fromBEHeader(buf, data, headerBytes)
-                    copy(buf[headerBytes:], data[headerBytes:])
-                    if len(buf) >= 12 && c.logger != nil {
-                        opWord2 := uint32(buf[8]) | uint32(buf[9])<<8 | uint32(buf[10])<<16 | uint32(buf[11])<<24
-                        c.logger.Debug("icmd.vcr.op.status", zap.Uint32("op_word2", opWord2), zap.Uint32("status", opWord2&0xffff))
-                        // Dump mailbox head after completion for parity
-                        dump := 64; if dump > len(buf) { dump = len(buf) }
-                        c.logger.Debug("icmd.vcr.mailbox.head", zap.String("bytes", hex.EncodeToString(buf[:dump])))
-                    }
-                    return nil
-                } else {
-                    if data, err := c.dev.ReadBlock(0x2, vcrCmdAddr, len(buf)); err == nil {
-                        fromBEHeader(buf, data, headerBytes)
-                        copy(buf[headerBytes:], data[headerBytes:])
-                        if len(buf) >= 12 {
-                            opWord2 := uint32(buf[8]) | uint32(buf[9])<<8 | uint32(buf[10])<<16 | uint32(buf[11])<<24
-                            if c.logger != nil { c.logger.Debug("icmd.vcr.op.status.fallback", zap.Uint32("op_word2", opWord2), zap.Uint32("status", opWord2&0xffff)) }
-                            if (opWord2 & 0xffff) == 0 { return nil }
-                        }
-                    }
-                }
-            }
-        }
-    }
+	// VCR attempt (unless forced CR)
+	if arPath != "cr" {
+		vcrCmdAddr := uint32(0x100000)
+		vcrCtrlAddr := uint32(0x0)
+		if c.logger != nil {
+			c.logger.Info("icmd.begin", zap.Int("size", len(be)), zap.String("ar_path", arPath), zap.Uint32("vcr_cmd_addr", vcrCmdAddr), zap.Uint32("vcr_ctrl_addr", vcrCtrlAddr))
+		}
+		if _, err := c.dev.Read32(0x3, vcrCtrlAddr); err == nil {
+			_ = icmdLockSemaphore(c.dev, 0x0)
+			defer icmdUnlockSemaphore(c.dev, 0x0)
+			if err := icmdWaitBusyClear(c.dev, vcrCtrlAddr, 3, 5*time.Second); err != nil {
+				return err
+			}
+			ctrlBefore, err := c.dev.Read32(0x3, vcrCtrlAddr)
+			if err != nil {
+				return fmt.Errorf("icmd vcr read ctrl: %w", err)
+			}
+			ctrlProg := (ctrlBefore &^ icmdOpcodeMask) | (uint32(icmdFlashRegAccess) << icmdOpcodeBitOff)
+			if err := c.dev.Write32(0x3, vcrCtrlAddr, ctrlProg); err != nil {
+				return fmt.Errorf("icmd vcr write ctrl (opcode): %w (before=0x%08x prog=0x%08x)", err, ctrlBefore, ctrlProg)
+			}
+			if c.logger != nil {
+				if chk, err := c.dev.Read32(0x3, vcrCtrlAddr); err == nil {
+					c.logger.Info("icmd.vcr.ctrl.check_go", zap.Uint32("ctrl", chk))
+				}
+			}
+			if err := c.dev.WriteBlock(0x2, vcrCmdAddr, be); err != nil {
+				if err2 := c.dev.WriteBlock(0x3, vcrCmdAddr, be); err2 != nil {
+					return fmt.Errorf("icmd write vcr mailbox: %w", err)
+				}
+			}
+			ctrl := ctrlProg | icmdBusyBitMask
+			if err := c.dev.Write32(0x3, vcrCtrlAddr, ctrl); err != nil {
+				return fmt.Errorf("icmd vcr write ctrl (go): %w (go=0x%08x)", err, ctrl)
+			}
+			if c.logger != nil {
+				c.logger.Info("icmd.vcr.ctrl",
+					zap.Uint32("before", ctrlBefore),
+					zap.Uint32("prog", ctrlProg),
+					zap.Uint32("go", ctrl),
+					zap.Uint32("opcode", (ctrlProg>>icmdOpcodeBitOff)&0xffff),
+					zap.Uint32("exmb", (ctrlProg>>1)&1),
+					zap.Uint32("busy", ctrlProg&1),
+				)
+			}
+			if err := c.waitBusyClear(vcrCtrlAddr, 3, 5*time.Second); err == nil {
+				ctrlAfter, _ := c.dev.Read32(0x3, vcrCtrlAddr)
+				if c.logger != nil {
+					c.logger.Info("icmd.vcr.ctrl.after",
+						zap.Uint32("after", ctrlAfter),
+						zap.Uint32("busy", ctrlAfter&1),
+						zap.Uint32("exmb", (ctrlAfter>>1)&1),
+						zap.Uint32("opcode", (ctrlAfter>>icmdOpcodeBitOff)&0xffff),
+					)
+				}
+				if ctrlAfter != ctrlBefore {
+					// Read mailbox
+					data, err := c.dev.ReadBlock(0x2, vcrCmdAddr, len(buf))
+					if err != nil {
+						if data2, err2 := c.dev.ReadBlock(0x3, vcrCmdAddr, len(buf)); err2 == nil {
+							data = data2
+						} else {
+							return fmt.Errorf("icmd vcr read mailbox: %w", err)
+						}
+					}
+					fromBEHeader(buf, data, headerBytes)
+					copy(buf[headerBytes:], data[headerBytes:])
+					if len(buf) >= 12 && c.logger != nil {
+						opWord2 := uint32(buf[8]) | uint32(buf[9])<<8 | uint32(buf[10])<<16 | uint32(buf[11])<<24
+						c.logger.Info("icmd.vcr.op.status", zap.Uint32("op_word2", opWord2), zap.Uint32("status", opWord2&0xffff))
+					}
+					return nil
+				} else {
+					if data, err := c.dev.ReadBlock(0x2, vcrCmdAddr, len(buf)); err == nil {
+						fromBEHeader(buf, data, headerBytes)
+						copy(buf[headerBytes:], data[headerBytes:])
+						if len(buf) >= 12 {
+							opWord2 := uint32(buf[8]) | uint32(buf[9])<<8 | uint32(buf[10])<<16 | uint32(buf[11])<<24
+							if c.logger != nil {
+								c.logger.Info("icmd.vcr.op.status.fallback", zap.Uint32("op_word2", opWord2), zap.Uint32("status", opWord2&0xffff))
+							}
+							if (opWord2 & 0xffff) == 0 {
+								return nil
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
-    if arPath == "vcr" {
-        return fmt.Errorf("icmd: no successful path (ar_path=%s)", arPath)
-    }
+	if arPath == "vcr" {
+		return fmt.Errorf("icmd: no successful path (ar_path=%s)", arPath)
+	}
 
-    // CR path
-    icmd, err := c.tryInitICMDCR()
-    if err != nil { return err }
-    if c.logger != nil { c.logger.Debug("icmd.cr.addrs", zap.Uint32("cmd_addr", icmd.cmdAddr), zap.Uint32("ctrl_addr", icmd.ctrlAddr), zap.Uint32("sem_addr", icmd.semAddr)) }
-    _ = icmdLockSemaphore(c.dev, icmd.semAddr)
-    defer icmdUnlockSemaphore(c.dev, icmd.semAddr)
-    if err := c.waitBusyClear(icmd.ctrlAddr, 3, 5*time.Second); err != nil { return err }
-    ctrlBefore, err := c.dev.Read32(0x3, icmd.ctrlAddr)
-    if err != nil { return fmt.Errorf("icmd read ctrl: %w", err) }
-    ctrlProg := (ctrlBefore &^ icmdOpcodeMask) | (uint32(icmdFlashRegAccess) << icmdOpcodeBitOff)
-    if err := c.dev.Write32(0x3, icmd.ctrlAddr, ctrlProg); err != nil {
-        return fmt.Errorf("icmd write ctrl (opcode): %w (before=0x%08x prog=0x%08x)", err, ctrlBefore, ctrlProg)
-    }
-    if err := c.dev.WriteBlock(0x2, icmd.cmdAddr, be); err != nil {
-        if err2 := c.dev.WriteBlock(0x3, icmd.cmdAddr, be); err2 != nil { return fmt.Errorf("icmd write mailbox: %w", err) }
-    }
-    ctrl := ctrlProg | icmdBusyBitMask
-    if err := c.dev.Write32(0x3, icmd.ctrlAddr, ctrl); err != nil { return fmt.Errorf("icmd write ctrl (go): %w (go=0x%08x)", err, ctrl) }
-    if c.logger != nil {
-        c.logger.Debug("icmd.cr.ctrl",
-            zap.Uint32("before", ctrlBefore),
-            zap.Uint32("prog", ctrlProg),
-            zap.Uint32("go", ctrl),
-            zap.Uint32("opcode", (ctrlProg>>icmdOpcodeBitOff)&0xffff),
-            zap.Uint32("exmb", (ctrlProg>>1)&1),
-            zap.Uint32("busy", ctrlProg&1),
-        )
-    }
-    if err := icmdWaitBusyClear(c.dev, icmd.ctrlAddr, 3, 5*time.Second); err != nil { return err }
-    if c.logger != nil {
-        if after, err := c.dev.Read32(0x3, icmd.ctrlAddr); err == nil {
-            c.logger.Debug("icmd.cr.ctrl.after",
-                zap.Uint32("after", after),
-                zap.Uint32("busy", after&1),
-                zap.Uint32("exmb", (after>>1)&1),
-                zap.Uint32("opcode", (after>>icmdOpcodeBitOff)&0xffff),
-            )
-        }
-    }
-    data, err := c.dev.ReadBlock(0x2, icmd.cmdAddr, len(buf))
-    if err != nil {
-        if data2, err2 := c.dev.ReadBlock(0x3, icmd.cmdAddr, len(buf)); err2 == nil { data = data2 } else { return fmt.Errorf("icmd read mailbox: %w", err) }
-    }
-    fromBEHeader(buf, data, headerBytes)
-    copy(buf[headerBytes:], data[headerBytes:])
-    if len(buf) >= 12 && c.logger != nil {
-        opWord2 := uint32(buf[8]) | uint32(buf[9])<<8 | uint32(buf[10])<<16 | uint32(buf[11])<<24
-        c.logger.Debug("icmd.cr.op.status", zap.Uint32("op_word2", opWord2), zap.Uint32("status", opWord2&0xffff))
-        dump := 64; if dump > len(buf) { dump = len(buf) }
-        c.logger.Debug("icmd.cr.mailbox.head", zap.String("bytes", hex.EncodeToString(buf[:dump])))
-    }
-    return nil
+	// CR path
+	icmd, err := c.tryInitICMDCR()
+	if err != nil {
+		return err
+	}
+	if c.logger != nil {
+		c.logger.Info("icmd.cr.addrs", zap.Uint32("cmd_addr", icmd.cmdAddr), zap.Uint32("ctrl_addr", icmd.ctrlAddr), zap.Uint32("sem_addr", icmd.semAddr))
+	}
+	_ = icmdLockSemaphore(c.dev, icmd.semAddr)
+	defer icmdUnlockSemaphore(c.dev, icmd.semAddr)
+	if err := c.waitBusyClear(icmd.ctrlAddr, 3, 5*time.Second); err != nil {
+		return err
+	}
+	ctrlBefore, err := c.dev.Read32(0x3, icmd.ctrlAddr)
+	if err != nil {
+		return fmt.Errorf("icmd read ctrl: %w", err)
+	}
+	ctrlProg := (ctrlBefore &^ icmdOpcodeMask) | (uint32(icmdFlashRegAccess) << icmdOpcodeBitOff)
+	if err := c.dev.Write32(0x3, icmd.ctrlAddr, ctrlProg); err != nil {
+		return fmt.Errorf("icmd write ctrl (opcode): %w (before=0x%08x prog=0x%08x)", err, ctrlBefore, ctrlProg)
+	}
+	if err := c.dev.WriteBlock(0x2, icmd.cmdAddr, be); err != nil {
+		if err2 := c.dev.WriteBlock(0x3, icmd.cmdAddr, be); err2 != nil {
+			return fmt.Errorf("icmd write mailbox: %w", err)
+		}
+	}
+	ctrl := ctrlProg | icmdBusyBitMask
+	if err := c.dev.Write32(0x3, icmd.ctrlAddr, ctrl); err != nil {
+		return fmt.Errorf("icmd write ctrl (go): %w (go=0x%08x)", err, ctrl)
+	}
+	if c.logger != nil {
+		c.logger.Info("icmd.cr.ctrl",
+			zap.Uint32("before", ctrlBefore),
+			zap.Uint32("prog", ctrlProg),
+			zap.Uint32("go", ctrl),
+			zap.Uint32("opcode", (ctrlProg>>icmdOpcodeBitOff)&0xffff),
+			zap.Uint32("exmb", (ctrlProg>>1)&1),
+			zap.Uint32("busy", ctrlProg&1),
+		)
+	}
+	if err := icmdWaitBusyClear(c.dev, icmd.ctrlAddr, 3, 5*time.Second); err != nil {
+		return err
+	}
+	if c.logger != nil {
+		if after, err := c.dev.Read32(0x3, icmd.ctrlAddr); err == nil {
+			c.logger.Info("icmd.cr.ctrl.after",
+				zap.Uint32("after", after),
+				zap.Uint32("busy", after&1),
+				zap.Uint32("exmb", (after>>1)&1),
+				zap.Uint32("opcode", (after>>icmdOpcodeBitOff)&0xffff),
+			)
+		}
+	}
+	data, err := c.dev.ReadBlock(0x2, icmd.cmdAddr, len(buf))
+	if err != nil {
+		if data2, err2 := c.dev.ReadBlock(0x3, icmd.cmdAddr, len(buf)); err2 == nil {
+			data = data2
+		} else {
+			return fmt.Errorf("icmd read mailbox: %w", err)
+		}
+	}
+	fromBEHeader(buf, data, headerBytes)
+	copy(buf[headerBytes:], data[headerBytes:])
+	if len(buf) >= 12 && c.logger != nil {
+		opWord2 := uint32(buf[8]) | uint32(buf[9])<<8 | uint32(buf[10])<<16 | uint32(buf[11])<<24
+		c.logger.Info("icmd.cr.op.status", zap.Uint32("op_word2", opWord2), zap.Uint32("status", opWord2&0xffff))
+	}
+	return nil
 }
 
 func icmdWaitBusyClear(dev Device, ctrlAddr uint32, space uint16, timeout time.Duration) error {

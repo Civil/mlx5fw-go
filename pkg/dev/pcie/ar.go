@@ -68,7 +68,7 @@ func (c *ARClient) findBootComponent() (idx uint16, devType uint8, ok bool) {
 		})
 		if err != nil || len(payload) != mcqsSize {
 			if c.logger != nil {
-            c.logger.Debug("ar.mcqs.fail", zap.Uint16("comp", comp), zap.Error(err))
+				c.logger.Info("ar.mcqs.fail", zap.Uint16("comp", comp), zap.Error(err))
 			}
 			break
 		}
@@ -77,9 +77,9 @@ func (c *ARClient) findBootComponent() (idx uint16, devType uint8, ok bool) {
 		lastFlag := getBitsBE(payload, 0, 1) != 0
 		status := uint8(getBitsBE(payload, 87, 5)) // component_status: 0 not present, 1 present, 2 in use
 		dtype := uint8(getBitsBE(payload, 120, 8))
-        if c.logger != nil {
-            c.logger.Debug("ar.mcqs.entry", zap.Uint16("comp", comp), zap.Uint16("identifier", ident), zap.Uint8("status", status), zap.Bool("last", lastFlag), zap.Uint8("dev_type", dtype))
-        }
+		if c.logger != nil {
+			c.logger.Info("ar.mcqs.entry", zap.Uint16("comp", comp), zap.Uint16("identifier", ident), zap.Uint8("status", status), zap.Bool("last", lastFlag), zap.Uint8("dev_type", dtype))
+		}
 		if ident == 1 && status != 0 {
 			return comp, dtype, true
 		}
@@ -228,24 +228,24 @@ func (c *ARClient) QueryFirmwareInfo() (map[string]interface{}, error) {
 	payload, err := c.transactAR(RegID_MGIR, mgirSize)
 	if err == nil && len(payload) == mgirSize {
 		// Log a small window regardless to debug availability
-        if c.logger != nil {
-            dumpLen := 64
-            if dumpLen > len(payload) {
-                dumpLen = len(payload)
-            }
-            start := 0x20
-            end := 0x50
-            if end > len(payload) {
-                end = len(payload)
-            }
-            c.logger.Debug("ar.mgir.raw",
-                zap.Int("size", len(payload)),
-                zap.String("bytes", hex.EncodeToString(payload[:dumpLen])),
-            )
-            if end > start {
-                c.logger.Debug("ar.mgir.fw_info.window", zap.String("0x20_0x50", hex.EncodeToString(payload[start:end])))
-            }
-        }
+		if c.logger != nil {
+			dumpLen := 64
+			if dumpLen > len(payload) {
+				dumpLen = len(payload)
+			}
+			start := 0x20
+			end := 0x50
+			if end > len(payload) {
+				end = len(payload)
+			}
+			c.logger.Info("ar.mgir.raw",
+				zap.Int("size", len(payload)),
+				zap.String("bytes", hex.EncodeToString(payload[:dumpLen])),
+			)
+			if end > start {
+				c.logger.Info("ar.mgir.fw_info.window", zap.String("0x20_0x50", hex.EncodeToString(payload[start:end])))
+			}
+		}
 		// Only trust MGIR if payload is non-zero
 		nonZero := false
 		for _, bb := range payload {
@@ -296,16 +296,20 @@ func (c *ARClient) QueryFirmwareInfo() (map[string]interface{}, error) {
 	} else {
 		// Fallback: try MCQI to retrieve at least basic version context (decode TBD)
 		const mcqiSize = 0x94
-        if c.logger != nil { c.logger.Debug("ar.query.mcqi.attempt") }
+		if c.logger != nil {
+			c.logger.Info("ar.query.mcqi.attempt")
+		}
 		if p2, err2 := c.transactAR(RegID_MCQI, mcqiSize); err2 == nil && len(p2) == mcqiSize {
-            if c.logger != nil { c.logger.Debug("ar.query.mcqi.ok", zap.Int("size", len(p2))) }
+			if c.logger != nil {
+				c.logger.Info("ar.query.mcqi.ok", zap.Int("size", len(p2)))
+			}
 			mcqi := decodeMCQI(p2)
 			if mcqi.ActivationMethod != "" {
 				res["ActivationMethod"] = mcqi.ActivationMethod
 			}
-        } else if err2 != nil && c.logger != nil {
-            c.logger.Debug("ar.query.mcqi.fail", zap.Error(err2))
-        }
+		} else if err2 != nil && c.logger != nil {
+			c.logger.Info("ar.query.mcqi.fail", zap.Error(err2))
+		}
 	}
 
 	// Attempt ROM info extraction from expansion ROM for device-mode parity
@@ -320,7 +324,9 @@ func (c *ARClient) QueryFirmwareInfo() (map[string]interface{}, error) {
 
 	// Discover boot component index via MCQS, then query MCQI for VERSION/ACTIVATION
 	bootIndex, devType, haveBoot := c.findBootComponent()
-    if c.logger != nil { c.logger.Debug("ar.mcqs.boot_index", zap.Bool("ok", haveBoot), zap.Uint16("index", bootIndex), zap.Uint8("dev_type", devType)) }
+	if c.logger != nil {
+		c.logger.Info("ar.mcqs.boot_index", zap.Bool("ok", haveBoot), zap.Uint16("index", bootIndex), zap.Uint8("dev_type", devType))
+	}
 	// Explicit MCQI pulls for activation method and (optionally) version
 	const mcqiSize = 0x94
 	// Helper to build a parameterized MCQI request
@@ -445,7 +451,7 @@ func (c *ARClient) QueryFirmwareInfo() (map[string]interface{}, error) {
 			}
 			if end > 0 {
 				verStr := string(vs[:end])
-                res["MCQI_VersionString"] = verStr
+				res["MCQI_VersionString"] = verStr
 				// Heuristic: extract release date like dd.mm.yyyy if present; validate ranges to avoid mistaking versions
 				if re := regexp.MustCompile(`\b(\d{2})\.(\d{2})\.(\d{4})\b`); re != nil {
 					if m := re.FindStringSubmatch(verStr); len(m) == 4 {
@@ -493,28 +499,28 @@ func (c *ARClient) TransactRaw(regID uint16, regSize int) ([]byte, error) {
 
 // TransactFull issues a GET and returns the entire TLV buffer (OP TLV + REG TLV + payload).
 func (c *ARClient) TransactFull(regID uint16, regSize int) ([]byte, error) {
-    const opTLVSize = 16
-    const regHdr = 4
-    total := opTLVSize + regHdr + regSize
-    // Pack TLV in the same LE form used by transactAR; sendICMD flips headers to BE
-    word0 := (uint32(1) & 0x1f) | (uint32(4) << 5)
-    word1 := (uint32(regID) & 0xffff) | (uint32(RegMethodGet) << 17) | (uint32(1) << 24)
-    dwords := uint16((regHdr + regSize) / 4)
-    regHdrWord := (uint32(3) & 0x1f) | (uint32(dwords) << 5)
-    buf := make([]byte, total)
-    // op tlv (LE)
-    binary.LittleEndian.PutUint32(buf[0:4], word0)
-    binary.LittleEndian.PutUint32(buf[4:8], word1)
-    // tid = 0
-    for i := 8; i < 16; i++ {
-        buf[i] = 0
-    }
-    // reg hdr (LE)
-    binary.LittleEndian.PutUint32(buf[16:20], regHdrWord)
-    if err := c.sendICMD(buf); err != nil {
-        return nil, err
-    }
-    return buf, nil
+	const opTLVSize = 16
+	const regHdr = 4
+	total := opTLVSize + regHdr + regSize
+	// Pack TLV in the same LE form used by transactAR; sendICMD flips headers to BE
+	word0 := (uint32(1) & 0x1f) | (uint32(4) << 5)
+	word1 := (uint32(regID) & 0xffff) | (uint32(RegMethodGet) << 17) | (uint32(1) << 24)
+	dwords := uint16((regHdr + regSize) / 4)
+	regHdrWord := (uint32(3) & 0x1f) | (uint32(dwords) << 5)
+	buf := make([]byte, total)
+	// op tlv (LE)
+	binary.LittleEndian.PutUint32(buf[0:4], word0)
+	binary.LittleEndian.PutUint32(buf[4:8], word1)
+	// tid = 0
+	for i := 8; i < 16; i++ {
+		buf[i] = 0
+	}
+	// reg hdr (LE)
+	binary.LittleEndian.PutUint32(buf[16:20], regHdrWord)
+	if err := c.sendICMD(buf); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 // validFWVersionString returns true if s matches X.Y.ZZZZ (last part 4 digits)
