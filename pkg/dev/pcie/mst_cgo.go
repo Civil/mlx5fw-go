@@ -1,4 +1,4 @@
-//go:build linux && cgo
+//go:build ignore
 // +build linux,cgo
 
 package pcie
