@@ -286,59 +286,54 @@ func (r *Reassembler) reassembleFirmware(output io.WriteSeeker, metadata *extrac
 			!metadata.IsEncrypted &&
 			len(sectionData) < int(section.OriginalSize) // Data doesn't already include CRC
 
-		if needsCRC {
-			r.logger.Info("Adding IN_SECTION CRC",
-				zap.String("section", section.TypeName()),
-				zap.Uint32("originalSize", section.OriginalSize),
-				zap.Uint32("size", section.Size()),
-				zap.Int("dataLen", len(sectionData)))
+        if needsCRC {
+            r.logger.Info("Adding IN_SECTION CRC",
+                zap.String("section", section.TypeName()),
+                zap.Uint32("originalSize", section.OriginalSize),
+                zap.Uint32("size", section.Size()),
+                zap.Int("dataLen", len(sectionData)))
 
-			// Determine whether to use blank CRC based on section type
-			// Some sections use 0xFFFFFFFF as a placeholder CRC value
-			var crcBytes []byte
+            // Centralized CRC policy
+            policy := types.GetInSectionCRCPolicy(section.Type())
+            var crcBytes []byte
 
-			// Check if this is a section type that typically has blank CRCs
-			// Based on observation: BOOT2, HASHES_TABLE, DEV_INFO, and device data sections
-			// NOTE: TOOLS_AREA should have its CRC calculated, not blank
-			if section.TypeName() == "BOOT2" ||
-				section.TypeName() == "HASHES_TABLE" || section.TypeName() == "DEV_INFO" ||
-				section.TypeName() == "MFG_INFO" || section.TypeName() == "IMAGE_INFO" ||
-				section.TypeName() == "FORBIDDEN_VERSIONS" || section.TypeName() == "PUBLIC_KEYS_2048" ||
-				section.TypeName() == "PUBLIC_KEYS_4096" || section.TypeName() == "IMAGE_SIGNATURE_512" ||
-				strings.HasPrefix(section.TypeName(), "UNKNOWN_0xE0") {
-				// Use blank CRC for these sections
-				crcBytes = []byte{0xFF, 0xFF, 0xFF, 0xFF}
-				r.logger.Info("Using blank CRC for section",
-					zap.String("section", section.TypeName()))
-			} else {
-				// Calculate CRC
-				var crc uint16
-				if r.isHardwareCRCSection(section) {
-					crc = crcCalc.CalculateHardwareCRC(sectionData)
-					r.logger.Info("Calculated hardware CRC",
-						zap.String("section", section.TypeName()),
-						zap.Uint16("crc", crc),
-						zap.Int("dataLen", len(sectionData)))
-				} else {
-					crc = crcCalc.CalculateSoftwareCRC16(sectionData)
-					r.logger.Info("Calculated software CRC",
-						zap.String("section", section.TypeName()),
-						zap.Uint16("crc", crc),
-						zap.Int("dataLen", len(sectionData)))
-				}
+            switch policy {
+            case types.InSectionCRCPolicyBlank:
+                crcBytes = []byte{0xFF, 0xFF, 0xFF, 0xFF}
+                r.logger.Info("Using blank CRC trailer",
+                    zap.String("section", section.TypeName()))
 
-				// Append CRC (16-bit CRC in lower 16 bits of 32-bit word, big-endian)
-				crcBytes = make([]byte, 4)
-				// Create a simple struct to handle the CRC format
-				// Based on mstflint source: CRC is stored in lower 16 bits
-				crcStruct := struct {
-					Reserved uint16 `offset:"byte:0,endian:be"`
-					CRC      uint16 `offset:"byte:2,endian:be"`
-				}{Reserved: 0, CRC: crc}
-				crcData, _ := annotations.MarshalStruct(&crcStruct)
-				crcBytes = crcData
-			}
-			sectionData = append(sectionData, crcBytes...)
+            case types.InSectionCRCPolicyHardware:
+                // Calculate hardware CRC
+                crc := crcCalc.CalculateHardwareCRC(sectionData)
+                r.logger.Info("Calculated hardware CRC",
+                    zap.String("section", section.TypeName()),
+                    zap.Uint16("crc", crc),
+                    zap.Int("dataLen", len(sectionData)))
+                // trailer stores CRC16 in lower 16 bits big-endian
+                crcBytes = make([]byte, 4)
+                crcStruct := struct {
+                    Reserved uint16 `offset:"byte:0,endian:be"`
+                    CRC      uint16 `offset:"byte:2,endian:be"`
+                }{Reserved: 0, CRC: crc}
+                crcData, _ := annotations.MarshalStruct(&crcStruct)
+                crcBytes = crcData
+
+            default: // Software
+                crc := crcCalc.CalculateSoftwareCRC16(sectionData)
+                r.logger.Info("Calculated software CRC",
+                    zap.String("section", section.TypeName()),
+                    zap.Uint16("crc", crc),
+                    zap.Int("dataLen", len(sectionData)))
+                crcBytes = make([]byte, 4)
+                crcStruct := struct {
+                    Reserved uint16 `offset:"byte:0,endian:be"`
+                    CRC      uint16 `offset:"byte:2,endian:be"`
+                }{Reserved: 0, CRC: crc}
+                crcData, _ := annotations.MarshalStruct(&crcStruct)
+                crcBytes = crcData
+            }
+            sectionData = append(sectionData, crcBytes...)
 
 			r.logger.Debug("Added CRC to section",
 				zap.String("section", section.TypeName()),

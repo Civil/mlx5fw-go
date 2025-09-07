@@ -254,6 +254,9 @@ Examples:
 
 	rootCmd.AddCommand(reassembleCmd)
 
+	// Add diff command
+	rootCmd.AddCommand(CreateDiffFirmwareCommand())
+
 	// Add report commands
 	rootCmd.AddCommand(CreateReportCommand())
 	rootCmd.AddCommand(CreateSectionReportCommand())

@@ -194,21 +194,23 @@ func (r *Reassembler) reconstructFromJSONByType(jsonData []byte, metadata extrac
 		}
 		copy(data[0:32], headerBytes)
 
-		// Process entries
-		offset := 32 // After header
-		for _, entry := range sectionData.Entries {
-			if offset+64 > len(data) {
-				break
-			}
+            // Process entries
+            offset := 32 // After header
+            for _, entry := range sectionData.Entries {
+                if offset+64 > len(data) {
+                    break
+                }
 
-			// Marshal entry to binary
-			entryData, err := entry.Marshal()
-			if err == nil {
-				copy(data[offset:offset+64], entryData[:64])
-			}
+                // Marshal entry to binary
+                entryData, err := entry.Marshal()
+                if err == nil {
+                    // Entry struct is 48 bytes; table encodes 64 bytes per entry.
+                    // Copy what we have and leave trailing bytes as zeros to match size.
+                    copy(data[offset:offset+64], entryData)
+                }
 
-			offset += 64
-		}
+                offset += 64
+            }
 
 		// Write reserved tail data if present
 		if sectionData.ReservedTail != "" {
