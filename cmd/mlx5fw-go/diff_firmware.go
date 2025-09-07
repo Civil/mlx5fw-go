@@ -169,6 +169,11 @@ func CreateDiffFirmwareCommand() *cobra.Command {
     var maxSpans int
     var jsonOut bool
     var filterTypes, filterRange string
+    var hexDump bool
+    var hexDumpContext int
+    var hexDumpMax int
+    var hexDumpWidth int
+    var noColor bool
 
     cmd := &cobra.Command{
         Use:   "diff",
@@ -207,6 +212,18 @@ func CreateDiffFirmwareCommand() *cobra.Command {
                         for i, sp := range rep.Raw.Spans {
                             if sp.Len >= 0 {
                                 fmt.Printf("%2d: off=0x%08x len=0x%x A=%02x B=%02x\n", i, sp.Off, sp.Len, sp.Afirst, sp.Bfirst)
+                                if hexDump {
+                                    start := sp.Off - int64(hexDumpContext)
+                                    if start < 0 { start = 0 }
+                                    end := sp.Off + sp.Len + int64(hexDumpContext)
+                                    maxCommon := int64(len(a))
+                                    if int64(len(b)) < maxCommon { maxCommon = int64(len(b)) }
+                                    if end > maxCommon { end = maxCommon }
+                                    if end-start > int64(hexDumpMax) { end = start + int64(hexDumpMax) }
+                                    fmt.Printf("-- hexdump raw span %d (0x%08x..0x%08x) --\n", i, start, end)
+                                    hexDumpSideBySide(a, b, 0, 0, int(start), int(end-start), hexDumpWidth, !noColor)
+                                    fmt.Println()
+                                }
                             }
                         }
                         fmt.Println()
@@ -318,6 +335,20 @@ func CreateDiffFirmwareCommand() *cobra.Command {
                                 } else {
                                     fmt.Printf("DIFF   %-22s @A:0x%08x B:0x%08x sizeA=0x%x sizeB=0x%x first+off=0x%x\n", sa.Name, sa.Key.Offset, sb.Key.Offset, sa.Size, sb.Size, fd)
                                 }
+                                if hexDump {
+                                    start := int64(0)
+                                    if fd != 0xFFFFFFFF {
+                                        start = int64(fd) - int64(hexDumpContext)
+                                        if start < 0 { start = 0 }
+                                    }
+                                    maxLen := int64(hexDumpMax)
+                                    if int64(len(ba)) < start+maxLen { maxLen = int64(len(ba)) - start }
+                                    if int64(len(bb)) < start+maxLen { tmp := int64(len(bb)) - start; if tmp < maxLen { maxLen = tmp } }
+                                    if maxLen < 0 { maxLen = 0 }
+                                    fmt.Printf("-- hexdump %s (A:0x%08x B:0x%08x +0x%x) --\n", sa.Name, sa.Key.Offset+uint64(start), sb.Key.Offset+uint64(start), fd)
+                                    hexDumpSideBySide(ba, bb, int64(sa.Key.Offset), int64(sb.Key.Offset), int(start), int(maxLen), hexDumpWidth, !noColor)
+                                    fmt.Println()
+                                }
                             }
                         }
                         items = append(items, sectionDiffJSON{
@@ -359,9 +390,88 @@ func CreateDiffFirmwareCommand() *cobra.Command {
     cmd.Flags().BoolVar(&jsonOut, "json", false, "output machine-readable JSON")
     cmd.Flags().StringVar(&filterTypes, "filter-types", "", "comma-separated section type names to include")
     cmd.Flags().StringVar(&filterRange, "filter-offset", "", "limit sections by offset range start:end (hex or dec)")
+    cmd.Flags().BoolVar(&hexDump, "hexdump", false, "print side-by-side hex dumps for diffs")
+    cmd.Flags().IntVar(&hexDumpContext, "hexdump-context", 16, "bytes of context around diffs in hex dumps")
+    cmd.Flags().IntVar(&hexDumpMax, "hexdump-max-bytes", 256, "maximum bytes to show per diff region in hex dumps")
+    cmd.Flags().IntVar(&hexDumpWidth, "hexdump-width", 16, "bytes per row in hex dump")
+    cmd.Flags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in hex dumps")
 
     cmd.MarkFlagRequired("a")
     cmd.MarkFlagRequired("b")
 
     return cmd
+}
+
+// ===== Hex dump helpers (same as dev tool) =====
+const (
+    ansiReset = "\x1b[0m"
+    ansiRed   = "\x1b[31m"
+    ansiCyan  = "\x1b[36m"
+)
+
+func isPrintable(b byte) bool { return b >= 0x20 && b <= 0x7e }
+
+func maybeColor(s string, colorCode string, enable bool) string {
+    if !enable { return s }
+    return colorCode + s + ansiReset
+}
+
+func hexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int, color bool) {
+    end := start + length
+    if start < 0 { start = 0 }
+    if end < start { return }
+    for row := start; row < end; row += width {
+        rEnd := row + width
+        if rEnd > end { rEnd = end }
+        addrA := baseA + int64(row)
+        addrB := baseB + int64(row)
+        fmt.Printf("%s %08x%s  ", maybeColor("A:", ansiCyan, color), uint32(addrA), maybeColor("", ansiCyan, false))
+        for i := row; i < row+width; i++ {
+            if i < rEnd && i < len(a) {
+                diff := i < len(b) && a[i] != b[i]
+                hx := fmt.Sprintf("%02x", a[i])
+                if diff { hx = maybeColor(hx, ansiRed, color) }
+                fmt.Printf("%s", hx)
+            } else {
+                fmt.Printf("  ")
+            }
+            if (i-row)%8 == 7 { fmt.Printf(" ") }
+            fmt.Printf(" ")
+        }
+        fmt.Printf(" ")
+        for i := row; i < row+width; i++ {
+            ch := " "
+            if i < rEnd && i < len(a) {
+                c := a[i]
+                if isPrintable(c) { ch = string(rune(c)) } else { ch = "." }
+                if i < len(b) && a[i] != b[i] { ch = maybeColor(ch, ansiRed, color) }
+            }
+            fmt.Printf("%s", ch)
+        }
+        fmt.Printf("  |  ")
+        fmt.Printf("%s %08x%s  ", maybeColor("B:", ansiCyan, color), uint32(addrB), maybeColor("", ansiCyan, false))
+        for i := row; i < row+width; i++ {
+            if i < rEnd && i < len(b) {
+                diff := i < len(a) && a[i] != b[i]
+                hx := fmt.Sprintf("%02x", b[i])
+                if diff { hx = maybeColor(hx, ansiRed, color) }
+                fmt.Printf("%s", hx)
+            } else {
+                fmt.Printf("  ")
+            }
+            if (i-row)%8 == 7 { fmt.Printf(" ") }
+            fmt.Printf(" ")
+        }
+        fmt.Printf(" ")
+        for i := row; i < row+width; i++ {
+            ch := " "
+            if i < rEnd && i < len(b) {
+                c := b[i]
+                if isPrintable(c) { ch = string(rune(c)) } else { ch = "." }
+                if i < len(a) && a[i] != b[i] { ch = maybeColor(ch, ansiRed, color) }
+            }
+            fmt.Printf("%s", ch)
+        }
+        fmt.Println()
+    }
 }
