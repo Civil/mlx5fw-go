@@ -469,8 +469,8 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 	}
 
 	// Build structured metadata
-	metadata := &extracted.FirmwareMetadata{
-		Format: "FS4",
+    metadata := &extracted.FirmwareMetadata{
+        Format: e.parser.GetFormat().String(),
 		Firmware: extracted.FirmwareFileInfo{
 			OriginalSize: uint64(fileInfo.Size),
 			SHA256Hash:   fileInfo.SHA256,
@@ -493,12 +493,12 @@ func (e *Extractor) extractMetadataWithFilenames(sectionFileMap map[uint64]strin
 			RawHeader:   base64.StdEncoding.EncodeToString(dtocRawData),
 		},
 		IsEncrypted: e.parser.IsEncrypted(),
-	}
+    }
 
-	// Set HW pointers based on type
-	if fs4HwPointers != nil {
-		metadata.HWPointers.FS4 = fs4HwPointers
-	}
+    // Set HW pointers based on type
+    if fs4HwPointers != nil {
+        metadata.HWPointers.FS4 = fs4HwPointers
+    }
 
 	// Add detailed section information
 	sections := e.parser.GetSections()

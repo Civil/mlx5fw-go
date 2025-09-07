@@ -61,12 +61,22 @@ func NewParser(reader *parser.FirmwareReader, logger *zap.Logger) *Parser {
 
 // Parse parses the FS4 firmware
 func (p *Parser) Parse() error {
-	// Find magic pattern
-	var err error
-	p.magicOffset, err = p.reader.FindMagicPattern()
-	if err != nil {
-		return merry.Wrap(err)
-	}
+    // If FS3 format, use dedicated parsing path
+    if p.format == types.FormatFS3 {
+        if err := p.parseFS3(); err != nil {
+            return merry.Wrap(err)
+        }
+        // Build metadata and return
+        p.buildMetadata()
+        return nil
+    }
+
+    // FS4/FS5 path: Find magic pattern
+    var err error
+    p.magicOffset, err = p.reader.FindMagicPattern()
+    if err != nil {
+        return merry.Wrap(err)
+    }
 
 	// Read and parse hardware pointers
 	if err := p.parseHWPointers(); err != nil {

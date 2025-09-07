@@ -10,24 +10,28 @@ import (
 type FirmwareFormat int
 
 const (
-	// FormatUnknown indicates unknown firmware format
-	FormatUnknown FirmwareFormat = iota
-	// FormatFS4 indicates FS4 firmware format
-	FormatFS4
-	// FormatFS5 indicates FS5 firmware format
-	FormatFS5
+    // FormatUnknown indicates unknown firmware format
+    FormatUnknown FirmwareFormat = iota
+    // FormatFS3 indicates FS3 firmware format
+    FormatFS3
+    // FormatFS4 indicates FS4 firmware format
+    FormatFS4
+    // FormatFS5 indicates FS5 firmware format
+    FormatFS5
 )
 
 // String returns the string representation of the firmware format
 func (f FirmwareFormat) String() string {
-	switch f {
-	case FormatFS4:
-		return "FS4"
-	case FormatFS5:
-		return "FS5"
-	default:
-		return "Unknown"
-	}
+    switch f {
+    case FormatFS3:
+        return "FS3"
+    case FormatFS4:
+        return "FS4"
+    case FormatFS5:
+        return "FS5"
+    default:
+        return "Unknown"
+    }
 }
 
 // MarshalJSON implements json.Marshaler interface
@@ -42,12 +46,14 @@ func (f *FirmwareFormat) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	switch s {
-	case "FS4":
-		*f = FormatFS4
-	case "FS5":
-		*f = FormatFS5
-	case "Unknown":
+    switch s {
+    case "FS3":
+        *f = FormatFS3
+    case "FS4":
+        *f = FormatFS4
+    case "FS5":
+        *f = FormatFS5
+    case "Unknown":
 		*f = FormatUnknown
 	default:
 		return fmt.Errorf("unknown firmware format: %s", s)

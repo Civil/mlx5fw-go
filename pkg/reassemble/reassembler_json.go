@@ -93,7 +93,7 @@ func (r *Reassembler) readSectionDataJSON(section extracted.SectionMetadata, fil
 // reconstructFromJSONByType reconstructs section data based on section type
 func (r *Reassembler) reconstructFromJSONByType(jsonData []byte, metadata extracted.SectionMetadata) ([]byte, error) {
 	switch uint16(metadata.Type()) {
-	case types.SectionTypeImageInfo:
+    case types.SectionTypeImageInfo:
 		// Parse JSON into wrapper struct
 		var sectionData struct {
 			ImageInfo *types.ImageInfo `json:"image_info"`
@@ -105,22 +105,15 @@ func (r *Reassembler) reconstructFromJSONByType(jsonData []byte, metadata extrac
 			return nil, fmt.Errorf("missing image_info data in JSON")
 		}
 
-		// Marshal to get raw data
-		data, err := sectionData.ImageInfo.Marshal()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal IMAGE_INFO: %w", err)
-		}
+        // Marshal to fixed size (1024 bytes)
+        data, err := annotations.MarshalStructWithSize(sectionData.ImageInfo, int(types.ImageInfoSize))
+        if err != nil {
+            return nil, fmt.Errorf("failed to marshal IMAGE_INFO: %w", err)
+        }
 
-		// Ensure size is 1024 bytes
-		if len(data) < 1024 {
-			paddedData := make([]byte, 1024)
-			copy(paddedData, data)
-			data = paddedData
-		}
+        return data, nil
 
-		return data, nil
-
-	case types.SectionTypeDevInfo:
+    case types.SectionTypeDevInfo:
 		// Parse JSON into wrapper struct
 		var sectionData struct {
 			DeviceInfo *types.DevInfo `json:"device_info"`
@@ -132,11 +125,11 @@ func (r *Reassembler) reconstructFromJSONByType(jsonData []byte, metadata extrac
 			return nil, fmt.Errorf("missing device_info data in JSON")
 		}
 
-		// Marshal to get raw data
-		data, err := sectionData.DeviceInfo.Marshal()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal DEV_INFO: %w", err)
-		}
+        // Marshal to the fixed DEV_INFO structure size (512 bytes)
+        data, err := annotations.MarshalStructWithSize(sectionData.DeviceInfo, int(types.DevInfoSize))
+        if err != nil {
+            return nil, fmt.Errorf("failed to marshal DEV_INFO: %w", err)
+        }
 
 		r.logger.Debug("DEV_INFO marshaled data",
 			zap.Int("dataLen", len(data)),
@@ -170,20 +163,12 @@ func (r *Reassembler) reconstructFromJSONByType(jsonData []byte, metadata extrac
 			return nil, fmt.Errorf("missing mfg_info data in JSON")
 		}
 
-		// Marshal to get raw data
-		data, err := sectionData.MfgInfo.Marshal()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal MFG_INFO: %w", err)
-		}
-
-		// Pad to section size if needed
-		if uint32(len(data)) < metadata.Size() {
-			paddedData := make([]byte, metadata.Size())
-			copy(paddedData, data)
-			data = paddedData
-		}
-
-		return data, nil
+        // Marshal to the exact section size so reserved tail matches image
+        data, err := annotations.MarshalStructWithSize(sectionData.MfgInfo, int(metadata.Size()))
+        if err != nil {
+            return nil, fmt.Errorf("failed to marshal MFG_INFO: %w", err)
+        }
+        return data, nil
 
 	case types.SectionTypeHashesTable:
 		// Parse JSON into wrapper struct

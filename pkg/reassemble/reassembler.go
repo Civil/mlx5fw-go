@@ -237,15 +237,26 @@ func (r *Reassembler) reassembleFirmware(output io.WriteSeeker, metadata *extrac
 		firmwareData[i] = 0xFF
 	}
 
-	// Write magic pattern at the correct offset
-	if err := r.writeMagicPattern(firmwareData, metadata.Magic.Offset); err != nil {
-		return fmt.Errorf("failed to write magic pattern: %w", err)
-	}
+    // Write magic pattern at the correct offset
+    // FS4/FS5 have a standardized 16-byte magic structure. FS3 does not.
+    // For FS3 images, the initial header (including MTFW) is restored via gap files,
+    // so we must not overwrite it here.
+    if strings.EqualFold(metadata.Format, "FS3") {
+        r.logger.Debug("Skipping magic pattern write for FS3 format")
+    } else {
+        if err := r.writeMagicPattern(firmwareData, metadata.Magic.Offset); err != nil {
+            return fmt.Errorf("failed to write magic pattern: %w", err)
+        }
+    }
 
-	// Write hardware pointers
-	if err := r.writeHWPointers(firmwareData, metadata.HWPointers); err != nil {
-		return fmt.Errorf("failed to write HW pointers: %w", err)
-	}
+    // Write hardware pointers (FS4/FS5 only). FS3 has no HW pointers block.
+    if metadata.HWPointers.FS4 != nil || metadata.HWPointers.FS5 != nil {
+        if err := r.writeHWPointers(firmwareData, metadata.HWPointers); err != nil {
+            return fmt.Errorf("failed to write HW pointers: %w", err)
+        }
+    } else {
+        r.logger.Debug("No HW pointers present (likely FS3); skipping write")
+    }
 
 	// Process gaps FIRST (before sections)
 	// This ensures that gap data doesn't overwrite section CRCs
@@ -348,10 +359,14 @@ func (r *Reassembler) reassembleFirmware(output io.WriteSeeker, metadata *extrac
 		return fmt.Errorf("failed to write TOC headers: %w", err)
 	}
 
-	// Update CRCs in HW pointers
-	if err := r.updateHWPointerCRCs(firmwareData, metadata, crcCalc); err != nil {
-		return fmt.Errorf("failed to update HW pointer CRCs: %w", err)
-	}
+    // Update CRCs in HW pointers if present
+    if metadata.HWPointers.FS4 != nil || metadata.HWPointers.FS5 != nil {
+        if err := r.updateHWPointerCRCs(firmwareData, metadata, crcCalc); err != nil {
+            return fmt.Errorf("failed to update HW pointer CRCs: %w", err)
+        }
+    } else {
+        r.logger.Debug("No HW pointers present; skipping CRC update")
+    }
 
 	// Write the complete firmware
 	if _, err := output.Write(firmwareData); err != nil {
@@ -461,11 +476,15 @@ func (r *Reassembler) writeMagicPattern(data []byte, offset uint32) error {
 }
 
 func (r *Reassembler) writeHWPointers(data []byte, hwPointers extracted.HWPointersInfo) error {
-	// Marshal HW pointers structure based on type
-	var hwPointersData []byte
-	var err error
+    // If neither FS4 nor FS5 pointers exist (e.g., FS3 image), do nothing
+    if hwPointers.FS4 == nil && hwPointers.FS5 == nil {
+        return nil
+    }
+    // Marshal HW pointers structure based on type
+    var hwPointersData []byte
+    var err error
 
-	if hwPointers.FS4 != nil {
+    if hwPointers.FS4 != nil {
 		hwPointersData, err = hwPointers.FS4.Marshal()
 		if err != nil {
 			return fmt.Errorf("failed to marshal FS4 HW pointers: %w", err)

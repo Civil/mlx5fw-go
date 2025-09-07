@@ -150,8 +150,14 @@ func displayQueryInfo(info *interfaces.FirmwareInfo, fullOutput bool, jsonOutput
 		fmt.Printf("Orig PSID:             N/A\n")
 	}
 
-	fmt.Printf("Security Attributes:   %s\n", cliutil.FormatNA(info.SecurityAttrs))
-	fmt.Printf("Security Ver:          %d\n", info.SecurityVer)
+    // FS3 doesn't support secure attributes; match mstflint by hiding these lines
+    if info.Format == "FS4" || info.Format == "FS5" {
+        fmt.Printf("Security Attributes:   %s\n", cliutil.FormatNA(info.SecurityAttrs))
+        fmt.Printf("Security Ver:          %d\n", info.SecurityVer)
+    } else if info.Format == "FS3" {
+        // Match mstflint FS3: show N/A for attributes, omit Security Ver
+        fmt.Printf("Security Attributes:   N/A\n")
+    }
 
 	fmt.Printf("Default Update Method: fw_ctrl\n")
 
