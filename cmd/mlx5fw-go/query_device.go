@@ -1,5 +1,5 @@
 //go:build ignore
-// +build linux
+// +build ignore
 
 //
 package main

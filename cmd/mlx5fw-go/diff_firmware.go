@@ -1,9 +1,6 @@
 package main
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
-    "encoding/json"
     "fmt"
     "os"
     "sort"
@@ -15,42 +12,16 @@ import (
     cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
     "github.com/Civil/mlx5fw-go/pkg/diffutil"
     "github.com/Civil/mlx5fw-go/pkg/types"
+    "github.com/Civil/mlx5fw-go/pkg/bytesutil"
 )
 
 // Diff command that mirrors cmd/devtools/diff_firmware with type-based matching
 
-func sha256Hex(b []byte) string {
-    h := sha256.Sum256(b)
-    return hex.EncodeToString(h[:])
-}
+// moved to bytesutil.SHA256Hex
 
 func readAll(path string) ([]byte, error) { return os.ReadFile(path) }
 
-type rawDiffSpan struct {
-    Off   int64  `json:"off"`
-    Len   int64  `json:"len"`
-    Afirst byte  `json:"a_first"`
-    Bfirst byte  `json:"b_first"`
-}
-
-func diffRaw(a, b []byte, maxSpans int) []rawDiffSpan {
-    var spans []rawDiffSpan
-    la, lb := int64(len(a)), int64(len(b))
-    i := int64(0)
-    max := la
-    if lb < max { max = lb }
-    for i < max && len(spans) < maxSpans {
-        if a[i] == b[i] { i++; continue }
-        start := i
-        afirst, bfirst := a[i], b[i]
-        for i < max && a[i] != b[i] { i++ }
-        spans = append(spans, rawDiffSpan{Off: start, Len: i - start, Afirst: afirst, Bfirst: bfirst})
-    }
-    if len(spans) < maxSpans && la != lb {
-        spans = append(spans, rawDiffSpan{Off: max, Len: (la - lb)})
-    }
-    return spans
-}
+// moved to bytesutil.DiffRaw
 
 // filter helpers are in pkg/cliutil
 
@@ -80,7 +51,7 @@ type jsonReport struct {
         SHA256A   string        `json:"sha256_a"`
         SHA256B   string        `json:"sha256_b"`
         Identical bool          `json:"identical"`
-        Spans     []rawDiffSpan `json:"spans,omitempty"`
+        Spans     []bytesutil.RawDiffSpan `json:"spans,omitempty"`
     } `json:"raw"`
     Sections struct {
         Enabled bool              `json:"enabled"`
@@ -101,6 +72,8 @@ func CreateDiffFirmwareCommand() *cobra.Command {
     var hexDumpMax int
     var hexDumpWidth int
     var noColor bool
+    var textDiffWidth int
+    var textDiffMax int
 
     cmd := &cobra.Command{
         Use:   "diff",
@@ -123,18 +96,18 @@ func CreateDiffFirmwareCommand() *cobra.Command {
                 rep.Raw.Enabled = true
                 rep.Raw.SizeA = len(a)
                 rep.Raw.SizeB = len(b)
-                rep.Raw.SHA256A = sha256Hex(a)
-                rep.Raw.SHA256B = sha256Hex(b)
+                rep.Raw.SHA256A = bytesutil.SHA256Hex(a)
+                rep.Raw.SHA256B = bytesutil.SHA256Hex(b)
                 rep.Raw.Identical = rep.Raw.SizeA == rep.Raw.SizeB && rep.Raw.SHA256A == rep.Raw.SHA256B
                 if !rep.Raw.Identical {
-                    rep.Raw.Spans = diffRaw(a, b, maxSpans)
+                    rep.Raw.Spans = bytesutil.DiffRaw(a, b, maxSpans)
                 }
                 if !jsonOut {
                     fmt.Printf("== RAW BYTES ==\n")
                     fmt.Printf("A: size=%d sha256=%s\n", rep.Raw.SizeA, rep.Raw.SHA256A)
                     fmt.Printf("B: size=%d sha256=%s\n", rep.Raw.SizeB, rep.Raw.SHA256B)
                     if rep.Raw.Identical {
-                        fmt.Println("IDENTICAL\n")
+                        fmt.Println("IDENTICAL")
                     } else {
                         for i, sp := range rep.Raw.Spans {
                             if sp.Len >= 0 {
@@ -256,7 +229,7 @@ func CreateDiffFirmwareCommand() *cobra.Command {
                                         if aText, errA := diffutil.TryGunzip(ba); errA == nil {
                                             if bText, errB := diffutil.TryGunzip(bb); errB == nil {
                                                 fmt.Printf("-- text diff DBG_FW_INI --\n")
-                                                diffutil.PrintSideBySideTextDiff(aText, bText, !noColor, 400, 64)
+                                                diffutil.PrintSideBySideTextDiff(aText, bText, !noColor, textDiffMax, textDiffWidth)
                                                 fmt.Println()
                                             }
                                         }
@@ -300,9 +273,7 @@ func CreateDiffFirmwareCommand() *cobra.Command {
             }
 
             if jsonOut {
-                enc := json.NewEncoder(os.Stdout)
-                enc.SetIndent("", "  ")
-                return enc.Encode(rep)
+                return cliutil.EncodeJSONIndent(os.Stdout, rep)
             }
             return nil
         },
@@ -321,6 +292,8 @@ func CreateDiffFirmwareCommand() *cobra.Command {
     cmd.Flags().IntVar(&hexDumpMax, "hexdump-max-bytes", 256, "maximum bytes to show per diff region in hex dumps")
     cmd.Flags().IntVar(&hexDumpWidth, "hexdump-width", 16, "bytes per row in hex dump")
     cmd.Flags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in hex dumps")
+    cmd.Flags().IntVar(&textDiffWidth, "textdiff-width", 64, "characters per column in text diff (DBG_FW_INI)")
+    cmd.Flags().IntVar(&textDiffMax, "textdiff-max-lines", 400, "maximum number of text diff lines to print (DBG_FW_INI)")
 
     cmd.MarkFlagRequired("a")
     cmd.MarkFlagRequired("b")

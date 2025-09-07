@@ -1,3 +1,6 @@
+//go:build pcie_disabled
+// +build pcie_disabled
+
 package pcie
 
 import "testing"

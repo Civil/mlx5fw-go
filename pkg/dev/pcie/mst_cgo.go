@@ -1,5 +1,5 @@
-//go:build ignore
-// +build linux,cgo
+//go:build pcie_enabled
+// +build pcie_enabled
 
 package pcie
 

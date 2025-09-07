@@ -1,17 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"compress/zlib"
-	"fmt"
-	"io"
+    "fmt"
 
-	"github.com/spf13/cobra"
-	"go.uber.org/zap"
+    "github.com/spf13/cobra"
+    "go.uber.org/zap"
 
-	cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
-	"github.com/Civil/mlx5fw-go/pkg/interfaces"
-	"github.com/Civil/mlx5fw-go/pkg/types"
+    cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
+    "github.com/Civil/mlx5fw-go/pkg/interfaces"
+    "github.com/Civil/mlx5fw-go/pkg/types"
+    "github.com/Civil/mlx5fw-go/pkg/compressutil"
 )
 
 func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
@@ -67,7 +65,7 @@ func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Try to decompress - mstflint always attempts this for DBG_FW_INI
-	decompressedData, err := decompressZlib(sectionData)
+    decompressedData, err := compressutil.DecompressZlib(sectionData)
 	if err != nil {
 		// If decompression fails, maybe it's not compressed
 		logger.Debug("Decompression failed, trying as uncompressed data")
@@ -80,33 +78,4 @@ func runPrintConfigCommand(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// decompressZlib decompresses zlib compressed data
-func decompressZlib(data []byte) ([]byte, error) {
-	// Try to decompress with increasing buffer sizes
-	// This mimics mstflint's behavior of trying different buffer sizes
-	initialSize := len(data) * 10 // Start with 10x compressed size
-	maxSize := 50 * 1024 * 1024   // Max 50MB
-
-	for bufSize := initialSize; bufSize <= maxSize; bufSize *= 2 {
-		reader, err := zlib.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create zlib reader: %w", err)
-		}
-		defer reader.Close()
-
-		// Read all data
-		decompressed, err := io.ReadAll(reader)
-		if err != nil {
-			// If buffer too small, try larger size
-			if err == io.ErrUnexpectedEOF {
-				continue
-			}
-			return nil, fmt.Errorf("failed to decompress: %w", err)
-		}
-
-		// Successfully decompressed
-		return decompressed, nil
-	}
-
-	return nil, fmt.Errorf("failed to decompress: buffer size exceeded maximum")
-}
+// zlib decompression now lives in pkg/compressutil

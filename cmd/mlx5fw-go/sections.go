@@ -1,11 +1,10 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"sort"
-	"strings"
+    "fmt"
+    "os"
+    "sort"
+    "strings"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -143,10 +142,8 @@ func displaySections(filePath string, format types.FirmwareFormat, sections map[
 			Sections:       jsonSections,
 		}
 
-		// Output as JSON
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(output)
+        // Output as JSON
+        return cliutil.EncodeJSONIndent(os.Stdout, output)
 	}
 
 	// Regular text output

@@ -101,8 +101,8 @@ func TestGetSectionTypeName(t *testing.T) {
 		{name: "BOOT2", sectionType: SectionTypeBoot2, want: "BOOT2"},
 
 		// Unknown section
-		{name: "Unknown section 0x99", sectionType: 0x99, want: "UNKNOWN_0x99"},
-		{name: "Unknown section 0xBB", sectionType: 0xBB, want: "UNKNOWN_0xBB"},
+        {name: "Unknown section 0x99", sectionType: 0x99, want: "UNKNOWN_0x0099"},
+        {name: "Unknown section 0xBB", sectionType: 0xBB, want: "UNKNOWN_0x00BB"},
 	}
 
 	for _, tt := range tests {
@@ -212,7 +212,7 @@ func TestSpecialSectionTypes(t *testing.T) {
 		{name: "BOOT2 special type", sectionType: 0x100, want: "BOOT2"},
 		// Test high values don't cause issues
 		{name: "High unknown value", sectionType: 0xFFFF, want: "UNKNOWN_0xFFFF"},
-		{name: "Mid-range unknown", sectionType: 0x200, want: "UNKNOWN_0x200"},
+        {name: "Mid-range unknown", sectionType: 0x200, want: "UNKNOWN_0x0200"},
 	}
 
 	for _, tt := range tests {

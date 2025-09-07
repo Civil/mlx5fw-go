@@ -91,6 +91,8 @@ Hex/text diffs (enabled by `--hexdump`):
 - `--hexdump-max-bytes <N>`: cap printed bytes per diff region (default 256)
 - `--hexdump-width <N>`: bytes per hex row (default 16)
 - `--no-color`: disable ANSI colors
+- `--textdiff-width <N>`: characters per column in side-by-side text diff for DBG_FW_INI (default 64)
+- `--textdiff-max-lines <N>`: maximum number of text diff lines to print (default 400)
 
 #### Output semantics
 

@@ -1,25 +1,14 @@
 package diffutil
 
 import (
-    "bytes"
-    "compress/gzip"
     "fmt"
-    "io"
     "strings"
-)
 
-const (
-    ansiReset = "\x1b[0m"
-    ansiRed   = "\x1b[31m"
-    ansiCyan  = "\x1b[36m"
+    "github.com/Civil/mlx5fw-go/pkg/compressutil"
+    "github.com/Civil/mlx5fw-go/pkg/termcolor"
 )
 
 func isPrintable(b byte) bool { return b >= 0x20 && b <= 0x7e }
-
-func maybeColor(s string, colorCode string, enable bool) string {
-    if !enable { return s }
-    return colorCode + s + ansiReset
-}
 
 // HexDumpSideBySide prints a side-by-side hex dump for a and b.
 // baseA/baseB are absolute base offsets; start is relative index into both slices.
@@ -33,14 +22,14 @@ func HexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int
         // address columns
         addrA := baseA + int64(row)
         addrB := baseB + int64(row)
-        fmt.Printf("%s %08x%s  ", maybeColor("A:", ansiCyan, color), uint32(addrA), maybeColor("", ansiCyan, false))
+        fmt.Printf("%s %08x%s  ", termcolor.Maybe("A:", termcolor.Cyan, color), uint32(addrA), termcolor.Maybe("", termcolor.Cyan, false))
 
         // bytes A
         for i := row; i < row+width; i++ {
             if i < rEnd && i < len(a) {
                 diff := i < len(b) && a[i] != b[i]
                 hx := fmt.Sprintf("%02x", a[i])
-                if diff { hx = maybeColor(hx, ansiRed, color) }
+                if diff { hx = termcolor.Maybe(hx, termcolor.Red, color) }
                 fmt.Printf("%s", hx)
             } else {
                 fmt.Printf("  ")
@@ -55,7 +44,7 @@ func HexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int
             if i < rEnd && i < len(a) {
                 c := a[i]
                 if isPrintable(c) { ch = string(rune(c)) } else { ch = "." }
-                if i < len(b) && a[i] != b[i] { ch = maybeColor(ch, ansiRed, color) }
+                if i < len(b) && a[i] != b[i] { ch = termcolor.Maybe(ch, termcolor.Red, color) }
             }
             fmt.Printf("%s", ch)
         }
@@ -64,13 +53,13 @@ func HexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int
         fmt.Printf("  |  ")
 
         // address B
-        fmt.Printf("%s %08x%s  ", maybeColor("B:", ansiCyan, color), uint32(addrB), maybeColor("", ansiCyan, false))
+        fmt.Printf("%s %08x%s  ", termcolor.Maybe("B:", termcolor.Cyan, color), uint32(addrB), termcolor.Maybe("", termcolor.Cyan, false))
         // bytes B
         for i := row; i < row+width; i++ {
             if i < rEnd && i < len(b) {
                 diff := i < len(a) && a[i] != b[i]
                 hx := fmt.Sprintf("%02x", b[i])
-                if diff { hx = maybeColor(hx, ansiRed, color) }
+                if diff { hx = termcolor.Maybe(hx, termcolor.Red, color) }
                 fmt.Printf("%s", hx)
             } else {
                 fmt.Printf("  ")
@@ -85,7 +74,7 @@ func HexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int
             if i < rEnd && i < len(b) {
                 c := b[i]
                 if isPrintable(c) { ch = string(rune(c)) } else { ch = "." }
-                if i < len(a) && a[i] != b[i] { ch = maybeColor(ch, ansiRed, color) }
+                if i < len(a) && a[i] != b[i] { ch = termcolor.Maybe(ch, termcolor.Red, color) }
             }
             fmt.Printf("%s", ch)
         }
@@ -95,14 +84,7 @@ func HexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int
 }
 
 // TryGunzip attempts to gunzip the provided data and returns string content.
-func TryGunzip(data []byte) (string, error) {
-    r, err := gzip.NewReader(bytes.NewReader(data))
-    if err != nil { return "", err }
-    defer r.Close()
-    out, err := io.ReadAll(r)
-    if err != nil { return "", err }
-    return string(out), nil
-}
+func TryGunzip(data []byte) (string, error) { return compressutil.TryGunzip(data) }
 
 // simple LCS for lines
 type opKind int
@@ -151,13 +133,12 @@ func PrintSideBySideTextDiff(aText, bText string, color bool, maxLines int, widt
         case opEq:
             fmt.Printf(" %s  |  %s\n", left, right)
         case opDel:
-            if color { left = ansiRed + left + ansiReset }
+            if color { left = termcolor.Red + left + termcolor.Reset }
             fmt.Printf("-%s  |  %s\n", left, right)
         case opIns:
-            if color { right = ansiRed + right + ansiReset }
+            if color { right = termcolor.Red + right + termcolor.Reset }
             fmt.Printf(" %s  | +%s\n", left, right)
         }
         printed++
     }
 }
-

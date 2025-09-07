@@ -1,9 +1,6 @@
 package main
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
-    "encoding/json"
     "flag"
     "fmt"
     "os"
@@ -15,6 +12,7 @@ import (
     cliutil "github.com/Civil/mlx5fw-go/pkg/cliutil"
     "github.com/Civil/mlx5fw-go/pkg/diffutil"
     "github.com/Civil/mlx5fw-go/pkg/types"
+    "github.com/Civil/mlx5fw-go/pkg/bytesutil"
 )
 
 type rawDiffSpan struct {
@@ -32,12 +30,7 @@ type jsonRawReport struct {
     SHA256A   string        `json:"sha256_a"`
     SHA256B   string        `json:"sha256_b"`
     Identical bool          `json:"identical"`
-    Spans     []rawDiffSpan `json:"spans,omitempty"`
-}
-
-func sha256Hex(b []byte) string {
-    h := sha256.Sum256(b)
-    return hex.EncodeToString(h[:])
+    Spans     []bytesutil.RawDiffSpan `json:"spans,omitempty"`
 }
 
 func readAll(path string) ([]byte, error) { return os.ReadFile(path) }
@@ -114,6 +107,8 @@ func main() {
     hexDumpMax := flag.Int("hexdump-max-bytes", 256, "maximum bytes to show per diff region in hex dumps")
     hexDumpWidth := flag.Int("hexdump-width", 16, "bytes per row in hex dump")
     noColor := flag.Bool("no-color", false, "disable ANSI colors in hex dumps")
+    textDiffWidth := flag.Int("textdiff-width", 64, "characters per column in text diff (DBG_FW_INI)")
+    textDiffMax := flag.Int("textdiff-max-lines", 400, "maximum number of text diff lines to print (DBG_FW_INI)")
     flag.Parse()
 
     if *aPath == "" || *bPath == "" {
@@ -141,11 +136,11 @@ func main() {
         rep.Raw.Enabled = true
         rep.Raw.SizeA = len(a)
         rep.Raw.SizeB = len(b)
-        rep.Raw.SHA256A = sha256Hex(a)
-        rep.Raw.SHA256B = sha256Hex(b)
+    rep.Raw.SHA256A = bytesutil.SHA256Hex(a)
+    rep.Raw.SHA256B = bytesutil.SHA256Hex(b)
         rep.Raw.Identical = (len(a) == len(b) && rep.Raw.SHA256A == rep.Raw.SHA256B)
         if !rep.Raw.Identical {
-            rep.Raw.Spans = diffRaw(a, b, *maxSpans)
+            rep.Raw.Spans = bytesutil.DiffRaw(a, b, *maxSpans)
         }
         if !*jsonOut {
             fmt.Printf("== RAW BYTES ==\n")
@@ -293,7 +288,7 @@ func main() {
                                 if aText, errA := diffutil.TryGunzip(ba); errA == nil {
                                     if bText, errB := diffutil.TryGunzip(bb); errB == nil {
                                         fmt.Printf("-- text diff DBG_FW_INI --\n")
-                                        diffutil.PrintSideBySideTextDiff(aText, bText, !*noColor, 400, 64)
+                                        diffutil.PrintSideBySideTextDiff(aText, bText, !*noColor, *textDiffMax, *textDiffWidth)
                                         fmt.Println()
                                     }
                                 }
@@ -345,9 +340,7 @@ func main() {
     }
 
     if *jsonOut {
-        enc := json.NewEncoder(os.Stdout)
-        enc.SetIndent("", "  ")
-        if err := enc.Encode(rep); err != nil {
+        if err := cliutil.EncodeJSONIndent(os.Stdout, rep); err != nil {
             fmt.Fprintf(os.Stderr, "encode json: %v\n", err)
             os.Exit(1)
         }
