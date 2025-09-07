@@ -37,11 +37,90 @@ Common commands (see `cmd/mlx5fw-go/*.go`):
 - `query`: Produce `mstflint`-like query output; supports `--json`.
 - `reassemble`: Rebuild firmware from extracted JSON/BIN files; recomputes CRC as needed.
 - `print-config`: Print decompressed contents of `DBG_FW_INI` when present.
+- `diff`: Compare two firmware images (raw and section-aware) with optional side‑by‑side diffs.
 
 Run examples:
 - Build: `go build -o mlx5fw-go ./cmd/mlx5fw-go`
 - Help: `go run ./cmd/mlx5fw-go --help`
 - Sections: `./mlx5fw-go sections -f sample_firmwares/example.bin -v`
+
+### Diff Firmware Command
+
+Compare two firmware images at both raw and section granularity. Sections are aligned by type and ordinal (sorted by offset), so simple address drift between images does not produce false “missing” reports.
+
+#### Usage
+
+```bash
+# Basic: raw + sections summary
+mlx5fw-go diff --a A.bin --b B.bin
+
+# JSON summary (suppresses hexdumps/log noise)
+mlx5fw-go diff --a A.bin --b B.bin --json > diff.json
+
+# Focus on specific sections (comma-separated, case-insensitive names)
+mlx5fw-go diff --a A.bin --b B.bin --sections --filter-types=IMAGE_INFO,PUBLIC_KEYS_4096
+
+# Limit to an address window (start:end, hex or decimal; start <= off < end)
+mlx5fw-go diff --a A.bin --b B.bin --sections --filter-offset=0x00600000:0x00700000
+
+# Side-by-side diffs around first difference (hex for most, text for DBG_FW_INI)
+mlx5fw-go diff --a A.bin --b B.bin --hexdump
+
+# Raw-only spans with hexdumps (up to 3 spans, expanded context)
+mlx5fw-go diff --a A.bin --b B.bin --raw --sections=false --max-spans=3 \
+  --hexdump --hexdump-context=32 --hexdump-max-bytes=128
+```
+
+#### Flags
+
+- `--a <file>`: first firmware file (required)
+- `--b <file>`: second firmware file (required)
+- `--raw` (default true): perform raw byte diff (SHA256 + first N spans)
+- `--sections` (default true): perform section-aware diff
+- `--json`: machine-readable JSON summary
+- `--max-spans <N>`: cap number of raw diff spans (default 40)
+- `--filter-types <list>`: comma-separated section names to include (case-insensitive)
+- `--filter-offset <start:end>`: include sections whose offsets satisfy `start <= off < end` (hex like `0x...` or decimal)
+
+Hex/text diffs (enabled by `--hexdump`):
+
+- `--hexdump`: enable side-by-side diffs
+  - Most sections: hex + ASCII for A|B; differing bytes highlighted
+  - Special case `DBG_FW_INI`: both sides are gunzipped and a side-by-side text diff (line-level) is shown
+- `--hexdump-context <N>`: bytes of context around the first diff (default 16)
+- `--hexdump-max-bytes <N>`: cap printed bytes per diff region (default 256)
+- `--hexdump-width <N>`: bytes per hex row (default 16)
+- `--no-color`: disable ANSI colors
+
+#### Output semantics
+
+- Raw: prints sizes, SHA256, and the first N differing spans (offsets/length). With `--hexdump`, each span includes a focused side-by-side hex dump.
+- Sections: each aligned pair prints either `OK` or `DIFF`. For diffs, it shows the first differing offset within the section (`first+off=0x...`). If the same section type appears a different number of times, the extra occurrences are reported as `MISSING in A/B`.
+- Offsets are shown for both images when different, e.g., `@A:0x... B:0x...`.
+- `DBG_FW_INI`: when `--hexdump` is enabled, content is gunzipped and a side-by-side text diff of the INI file is printed.
+
+#### JSON summary (shape)
+
+`--json` prints a single object with `raw` and `sections`. Each section item contains:
+
+```jsonc
+{
+  "name": "IMAGE_INFO",
+  "type": 16,
+  "offset_a": 6682880,
+  "offset_b": 6454784,
+  "size_a": 1024,
+  "size_b": 1024,
+  "crc_type_a": "IN_ITOC_ENTRY",
+  "crc_type_b": "IN_ITOC_ENTRY",
+  "crc_algo_a": "SOFTWARE",
+  "crc_algo_b": "SOFTWARE",
+  "encrypted_a": false,
+  "encrypted_b": false,
+  "identical": false,
+  "first_diff_offset": 10
+}
+```
 
 ## Parsing Architecture
 Key flow (FS4): `pkg/parser/fs4/parser.go`

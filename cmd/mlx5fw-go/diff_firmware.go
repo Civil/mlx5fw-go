@@ -1,10 +1,13 @@
 package main
 
 import (
+    "bytes"
+    "compress/gzip"
     "crypto/sha256"
     "encoding/hex"
     "encoding/json"
     "fmt"
+    "io"
     "os"
     "sort"
     "strings"
@@ -336,18 +339,28 @@ func CreateDiffFirmwareCommand() *cobra.Command {
                                     fmt.Printf("DIFF   %-22s @A:0x%08x B:0x%08x sizeA=0x%x sizeB=0x%x first+off=0x%x\n", sa.Name, sa.Key.Offset, sb.Key.Offset, sa.Size, sb.Size, fd)
                                 }
                                 if hexDump {
-                                    start := int64(0)
-                                    if fd != 0xFFFFFFFF {
-                                        start = int64(fd) - int64(hexDumpContext)
-                                        if start < 0 { start = 0 }
+                                    if strings.EqualFold(sa.Name, "DBG_FW_INI") {
+                                        if aText, errA := tryGunzip(ba); errA == nil {
+                                            if bText, errB := tryGunzip(bb); errB == nil {
+                                                fmt.Printf("-- text diff DBG_FW_INI --\n")
+                                                printSideBySideTextDiff(aText, bText, !noColor, 400, 64)
+                                                fmt.Println()
+                                            }
+                                        }
+                                    } else {
+                                        start := int64(0)
+                                        if fd != 0xFFFFFFFF {
+                                            start = int64(fd) - int64(hexDumpContext)
+                                            if start < 0 { start = 0 }
+                                        }
+                                        maxLen := int64(hexDumpMax)
+                                        if int64(len(ba)) < start+maxLen { maxLen = int64(len(ba)) - start }
+                                        if int64(len(bb)) < start+maxLen { tmp := int64(len(bb)) - start; if tmp < maxLen { maxLen = tmp } }
+                                        if maxLen < 0 { maxLen = 0 }
+                                        fmt.Printf("-- hexdump %s (A:0x%08x B:0x%08x +0x%x) --\n", sa.Name, sa.Key.Offset+uint64(start), sb.Key.Offset+uint64(start), fd)
+                                        hexDumpSideBySide(ba, bb, int64(sa.Key.Offset), int64(sb.Key.Offset), int(start), int(maxLen), hexDumpWidth, !noColor)
+                                        fmt.Println()
                                     }
-                                    maxLen := int64(hexDumpMax)
-                                    if int64(len(ba)) < start+maxLen { maxLen = int64(len(ba)) - start }
-                                    if int64(len(bb)) < start+maxLen { tmp := int64(len(bb)) - start; if tmp < maxLen { maxLen = tmp } }
-                                    if maxLen < 0 { maxLen = 0 }
-                                    fmt.Printf("-- hexdump %s (A:0x%08x B:0x%08x +0x%x) --\n", sa.Name, sa.Key.Offset+uint64(start), sb.Key.Offset+uint64(start), fd)
-                                    hexDumpSideBySide(ba, bb, int64(sa.Key.Offset), int64(sb.Key.Offset), int(start), int(maxLen), hexDumpWidth, !noColor)
-                                    fmt.Println()
                                 }
                             }
                         }
@@ -473,5 +486,69 @@ func hexDumpSideBySide(a, b []byte, baseA, baseB int64, start, length, width int
             fmt.Printf("%s", ch)
         }
         fmt.Println()
+    }
+}
+
+// ===== Text diff helpers for DBG_FW_INI =====
+func tryGunzip(data []byte) (string, error) {
+    r, err := gzip.NewReader(bytes.NewReader(data))
+    if err != nil { return "", err }
+    defer r.Close()
+    out, err := io.ReadAll(r)
+    if err != nil { return "", err }
+    return string(out), nil
+}
+
+type opKind int
+const (
+    opEq opKind = iota
+    opDel
+    opIns
+)
+type diffOp struct { kind opKind; a, b string }
+
+func lcsLines(a, b []string) []diffOp {
+    n, m := len(a), len(b)
+    dp := make([][]int, n+1)
+    for i := range dp { dp[i] = make([]int, m+1) }
+    for i:=n-1;i>=0;i--{
+        for j:=m-1;j>=0;j--{
+            if a[i]==b[j] { dp[i][j]=dp[i+1][j+1]+1 } else if dp[i+1][j]>=dp[i][j+1] { dp[i][j]=dp[i+1][j] } else { dp[i][j]=dp[i][j+1] }
+        }
+    }
+    i,j:=0,0
+    ops := []diffOp{}
+    for i<n && j<m {
+        if a[i]==b[j] { ops=append(ops,diffOp{opEq,a[i],b[j]}); i++; j++; } else if dp[i+1][j]>=dp[i][j+1] { ops=append(ops,diffOp{opDel,a[i],""}); i++; } else { ops=append(ops,diffOp{opIns,"",b[j]}); j++; }
+    }
+    for ; i<n; i++ { ops=append(ops,diffOp{opDel,a[i],""}) }
+    for ; j<m; j++ { ops=append(ops,diffOp{opIns,"",b[j]}) }
+    return ops
+}
+
+func printSideBySideTextDiff(aText, bText string, color bool, maxLines int, width int) {
+    al := strings.Split(aText, "\n")
+    bl := strings.Split(bText, "\n")
+    ops := lcsLines(al, bl)
+    if width <= 0 { width = 60 }
+    printed := 0
+    for _, op := range ops {
+        if printed >= maxLines { fmt.Printf("... (truncated %d more lines)\n", len(ops)-printed); break }
+        sa, sb := op.a, op.b
+        if len(sa) > width { sa = sa[:width] }
+        if len(sb) > width { sb = sb[:width] }
+        left := fmt.Sprintf("%-*s", width, sa)
+        right := fmt.Sprintf("%-*s", width, sb)
+        switch op.kind {
+        case opEq:
+            fmt.Printf(" %s  |  %s\n", left, right)
+        case opDel:
+            if color { left = ansiRed + left + ansiReset }
+            fmt.Printf("-%s  |  %s\n", left, right)
+        case opIns:
+            if color { right = ansiRed + right + ansiReset }
+            fmt.Printf(" %s  | +%s\n", left, right)
+        }
+        printed++
     }
 }
